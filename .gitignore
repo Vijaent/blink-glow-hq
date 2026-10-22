@@ -1,0 +1,10 @@
+# Never commit client data or database exports
+*.sql
+!supabase/schema.sql
+backup/
+*-backup*/
+*.zip
+.env*
+.vercel
+.DS_Store
+node_modules
