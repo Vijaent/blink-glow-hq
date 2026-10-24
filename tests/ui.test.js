@@ -87,6 +87,28 @@ const CFG = { biz: 'Blink & Glow', tz: 'Africa/Nairobi', phone: '0712345678', ho
   await q.click('text=Sign out'); await q.waitForSelector('#gateForm', { state: 'visible', timeout: 6000 }).catch(() => {});
   ok('Signing out returns to the login screen', await q.isVisible('#gateForm'));
 
+  // ---------- 2b. emailed invite / reset links must ask for a password ----------
+  const mk = async (hash, session) => { const pg = await (await b.newContext({ viewport: { width: 390, height: 800 } })).newPage();
+    await pg.route(/fonts\.g/, r => r.abort());
+    if (session) await pg.addInitScript(() => sessionStorage.setItem('fakeSession', JSON.stringify({ user: { id: 'u9', email: 'kate@test' } })));
+    await pg.route('https://cdn.jsdelivr.net/**', r => r.fulfill({ contentType: 'application/javascript', body: FAKE }));
+    await pg.route('http://app.test/**', r => r.request().url().endsWith('config.js') ? r.fulfill({ contentType: 'application/javascript', body: "window.BGHQ_CONFIG={url:'https://x.supabase.co',key:'k'}" }) : r.fulfill({ contentType: 'text/html', body: INDEX }));
+    await pg.goto('http://app.test/' + hash); await pg.waitForTimeout(900); return pg };
+  let L = await mk('#access_token=abc&refresh_token=d&type=recovery', true);
+  ok('A reset link asks for a new password, it does not drop the person into the app', await L.isVisible('#gPass2') && !(await L.isVisible('.nav')));
+  await L.fill('#gPass', 'short'); await L.fill('#gPass2', 'short'); await L.click('#gBtn'); await L.waitForTimeout(300);
+  ok('A too-short password is refused', /8 characters/.test(await L.textContent('#gErr')));
+  await L.fill('#gPass', 'long-enough-1'); await L.fill('#gPass2', 'long-enough-2'); await L.click('#gBtn'); await L.waitForTimeout(300);
+  ok('Mismatched passwords are refused', /do not match/.test(await L.textContent('#gErr')));
+  await L.fill('#gPass', 'long-enough-1'); await L.fill('#gPass2', 'long-enough-1'); await L.click('#gBtn'); await L.waitForSelector('.nav', { timeout: 6000 });
+  ok('After choosing a password the person is let in', await L.isVisible('.nav'));
+  L = await mk('#access_token=abc&refresh_token=d&type=invite', true);
+  ok('An invite link also asks the person to choose a password', await L.isVisible('#gPass2') && !(await L.isVisible('.nav')));
+  L = await mk('', true);
+  ok('A normal visit with a saved sign-in goes straight to the app', await L.isVisible('.nav'));
+  L = await mk('#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired', false);
+  ok('An expired link explains itself and offers a fresh one', /expired/.test(await L.textContent('#gErr')) && await L.isVisible('#gForgot'));
+
   // ---------- 3. not configured ----------
   const r3 = await (await b.newContext()).newPage();
   await r3.route('**/*', r => r.request().url().endsWith('config.js') ? r.fulfill({ contentType: 'application/javascript', body: "window.BGHQ_CONFIG={url:'https://YOUR-PROJECT-REF.supabase.co',key:'YOUR-PUBLISHABLE-KEY'}" }) : r.request().url().includes('jsdelivr') ? r.fulfill({ contentType: 'application/javascript', body: FAKE }) : r.fulfill({ contentType: 'text/html', body: INDEX }));

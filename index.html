@@ -2480,6 +2480,10 @@ var qrcode = function() {
   const gate=$g('gate'),form=$g('gateForm'),err=$g('gErr'),btn=$g('gBtn'),msg=$g('gateMsg');
   const h=location.hash||'';let mode=/type=(recovery|invite)/.test(h)?'setpw':'signin';
   const publicHash=()=>/^#book/.test(location.hash||'');
+  // An emailed invite / reset link lands here with #...type=recovery (or invite). Remember it before the library
+  // clears the address, so the person is always asked to choose a password and never dropped straight in without one.
+  const LINK_ERR=/error_code=otp_expired|error=access_denied/.test(location.hash||'');
+  const FROM_LINK=/[#&]type=(recovery|invite)\b/.test(location.hash||'');
   let resolveReady;const ready=new Promise(r=>{resolveReady=r});
   let sb=null;
   try{if(!CFG.url||/YOUR-PROJECT/.test(CFG.url))throw new Error('Supabase is not connected yet (edit config.js).');
@@ -2503,10 +2507,11 @@ var qrcode = function() {
   if(sb){
     sb.auth.onAuthStateChange(ev=>{if(ev==='PASSWORD_RECOVERY')show('setpw')});
     sb.auth.getSession().then(({data})=>{
-      if(data.session&&mode!=='setpw')enter(data.session);
+      if(data.session&&FROM_LINK&&mode!=='setpw')show('setpw');
+      else if(data.session&&mode!=='setpw')enter(data.session);
       else if(data.session&&mode==='setpw')show('setpw');
       else if(publicHash()&&mode!=='setpw')resolveReady(null);
-      else{const expired=mode==='setpw';show('signin');if(expired)err.textContent='That link has expired or was already used. Use "Forgot your password?" for a new one.'}
+      else{const expired=mode==='setpw'||LINK_ERR;show('signin');if(expired)err.textContent='That link has expired or was already used. Tap "Forgot your password?" to get a fresh one, and open it straight away.'}
     }).catch(()=>show('signin'));
   }else{if(publicHash())resolveReady(null);else show('signin');err.textContent=CFG.url?'':'Supabase is not connected yet.'}
 
