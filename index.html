@@ -149,6 +149,23 @@ code.link{display:block;overflow-wrap:anywhere;background:var(--soft);border:1px
   h1{font-size:27px}
   .cal .d{min-height:62px}
 }
+@media (max-width:700px){
+  .tw{border:0;overflow:visible;display:flex;flex-direction:column;gap:10px}
+  .tw table,.tw tbody{display:block}
+  .tw thead{display:none}
+  .tw tr{display:block;border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:var(--surface)}
+  .tw tr:last-child td{border-bottom:0}
+  .tw tr.click:active td{background:transparent}
+  .tw td{display:flex;justify-content:space-between;align-items:center;gap:14px;border:0;padding:5px 0;text-align:right}
+  .tw td::before{content:attr(data-l);color:var(--mute);font-size:12px;font-weight:600;text-align:left;flex:none}
+  .tw td:first-child{font-weight:600;font-size:15px;justify-content:flex-start;text-align:left;padding-bottom:6px}
+  .tw td:first-child::before,.tw td[data-l=""]::before{display:none}
+  .tw td[data-l=""]{justify-content:flex-start;flex-wrap:wrap;text-align:left}
+  .tw td .act{display:flex;gap:8px;flex-wrap:wrap}
+  .tw td[data-nil]{display:none}
+  .tabs{flex-wrap:wrap;overflow:visible;gap:0}
+  .tabs button{padding:8px 11px}
+}
 </style>
 
 </head>
@@ -2831,7 +2848,7 @@ function openForm(o){const vals={},msg=h('div',{class:'err',role:'alert'}),form=
  modal(o.title,body,o.wide);if(o.onChange)setTimeout(()=>o.onChange('init',api),0);return api}
 function tbl(heads,rows,opt){opt=opt||{};if(!rows.length)return opt.empty||h('div',{class:'empty'},[h('b',{text:'Nothing here yet'}),'Records will appear here.']);
  const num=heads.map(x=>x[0]==='#');
- return h('div',{class:'tw'},[h('table',{},[h('thead',{},[h('tr',{},heads.map((x,i)=>h('th',{class:num[i]?'n':'',text:num[i]?x.slice(1):x})))]),h('tbody',{},rows.map(r=>{const cells=r.cells||r;return h('tr',{class:r.onclick?'click':'',onclick:r.onclick},cells.map((c,i)=>h('td',{class:(num[i]?'n ':'')+(c&&c.act?'act':'')},[c&&c.nodeType?c:esc(c)])))}))])])}
+ return h('div',{class:'tw'},[h('table',{},[h('thead',{},[h('tr',{},heads.map((x,i)=>h('th',{class:num[i]?'n':'',text:num[i]?x.slice(1):x})))]),h('tbody',{},rows.map(r=>{const cells=r.cells||r;return h('tr',{class:r.onclick?'click':'',onclick:r.onclick},cells.map((c,i)=>h('td',{class:(num[i]?'n ':'')+(c&&c.act?'act':''),'data-l':String(heads[i]||'').replace(/^#/,''),'data-nil':(c==null||c===''||c==='—')?'1':null},[c&&c.nodeType?c:esc(c)])))}))])])}
 function pill(t,k){return h('span',{class:'pill '+(k||''),text:t})}
 function tile(lab,val,sub,st){return h('div',{class:'tile'},[h('div',{class:'lab',text:lab}),h('div',{class:'val',text:val}),h('div',{class:'sub'},[st?pill(st[1],st[0]):null,h('span',{text:sub||''})])])}
 function stat(val,target,hi){if(!isFinite(val)||!isFinite(target)||!target)return ['','Needs data'];const r=hi?val/target:target/val;return r>=1?['good','On track']:r>=.8?['warn','Close']:['bad','Behind']}
@@ -3436,10 +3453,8 @@ function viewUsers(){const w=h('div',{class:'wrap'});
    const acts=h('span',{class:'act'},[h('button',{class:'btn ghost sm',type:'button',text:'Set password',onclick:()=>resetPwModal(u.email)}),u.email===myEmail?null:' ',u.email===myEmail?null:h('button',{class:'btn danger sm',type:'button',text:'Delete login',onclick:()=>deleteLogin(u.email)})]);
    return [u.email+(u.email===myEmail?' (you)':''),pillFor(u.role),u.last_sign_in_at?fdy(String(u.last_sign_in_at).slice(0,10)):'Never',sel,acts]}),{empty:UST.rows===null?h('p',{class:'hint',text:'Loading…'}):emptyBox('No logins yet','Add the first person below.')})));
  w.appendChild(addPersonCard());
- const Y='Yes',N='—';
- w.appendChild(card('What each kind of access can do',null,tbl(['','Owner','Admin'],[
-  ['Clients, inquiries and follow-ups',Y,Y],['Bookings, requests and the booking link',Y,Y],['Record sales and payments',Y,Y],['Record stock used',Y,Y],
-  ['Void, refund or adjust a sale',Y,N],['Add products, receive stock, see costs',Y,N],['Finance Tracker: expenses, accounts, profit',Y,N],['Services and prices',Y,N],['Marketing and content',Y,N],['Reports and revenue figures',Y,N],['Settings, hours and Users',Y,N]])));
+ const CAN=[['Clients, inquiries and follow-ups',1],['Bookings, requests and the booking link',1],['Record sales and payments',1],['Record stock used',1],['Void, refund or adjust a sale',0],['Add products, receive stock, see costs',0],['Finance Tracker: expenses, accounts, profit',0],['Services and prices',0],['Marketing and content',0],['Reports and revenue figures',0],['Settings, hours and Users',0]];
+ w.appendChild(card('What each kind of access can do','Admin is for day-to-day work. Owner can do everything.',h('div',{style:'display:flex;flex-direction:column'},CAN.map(r=>h('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)'},[h('span',{text:r[0]}),r[1]?pill('Owner and Admin','green'):pill('Owner only','warn')])))));
  return w}
 
 /* ================= Settings ================= */
