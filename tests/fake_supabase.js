@@ -6,6 +6,9 @@
   const seed = window.__SEED || []; seed.forEach(r=>DB.rows.set(key(r.collection,r.id),r));
   const tmin=t=>{const p=String(t).split(':');return +p[0]*60+(+p[1]||0)};
   const rpcs = {
+    bg_my_role:()=>window.__ROLE||'owner',
+    bg_team:()=>[{email:'kate@test',role:'owner',last_sign_in_at:'2026-10-24T09:00:00Z'},{email:'amy@test',role:'admin',last_sign_in_at:null}],
+    bg_set_role:(a)=>{DB.log.push(['role',a.p_email,a.p_role]);return null},
     public_booking_config:()=>{const r=DB.rows.get(key('pubcfg','main'));return r?r.data:{}},
     public_busy:({p_from,p_to})=>[...DB.rows.values()].filter(r=>r.collection==='slots'&&r.data.date>=p_from&&r.data.date<=p_to).map(r=>({date:r.data.date,s:r.data.s,e:r.data.e,staff:r.data.staff})),
     public_request_booking:(a)=>{

@@ -55,18 +55,127 @@ drop trigger if exists slots_guard on public.records;
 create trigger slots_guard before insert or update on public.records
   for each row execute function public.slots_guard();
 
--- Lock it down: only signed-in team members can read or change records.
+-- ---------------------------------------------------------------------------------------------
+-- Who may do what. Two kinds of signed-in user:
+--   owner : everything (finance, reports, settings, services, marketing, team access)
+--   admin : day-to-day work only (clients, bookings, sales and payments entry, stock movements).
+--           Cannot read or write expenses, accounts, transfers, obligations, content, campaigns or
+--           the audit trail, cannot change settings or services, and cannot void, refund or adjust a sale.
+-- Anyone signed in who is not listed in team_roles is an admin. Sign-ups are switched off, so only
+-- people created in Supabase can sign in at all.
+-- ---------------------------------------------------------------------------------------------
+create table if not exists public.team_roles (
+  user_id    uuid primary key references auth.users(id) on delete cascade,
+  email      text not null,
+  role       text not null check (role in ('owner','admin')),
+  updated_at timestamptz not null default now()
+);
+alter table public.team_roles enable row level security;
+revoke all on public.team_roles from anon, authenticated;
+
+create or replace function public.bg_role() returns text
+language sql stable security definer set search_path = public as $$
+  select case when auth.uid() is null then null
+              else coalesce((select t.role from public.team_roles t where t.user_id = auth.uid()), 'admin') end
+$$;
+
+create or replace function public.bg_my_role() returns text
+language sql stable security definer set search_path = public as $$ select public.bg_role() $$;
+
+create or replace function public.bg_allowed(op text, coll text) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare r text := public.bg_role();
+begin
+  if r is null then return false; end if;
+  if r = 'owner' then return true; end if;
+  if op = 'select' then
+    return coll in ('contacts','inq','followups','appts','slots','inbox','sales','payments','moves','products','msglog','services','accounts','cfg');
+  elsif op = 'insert' then
+    return coll in ('contacts','inq','followups','appts','slots','inbox','sales','payments','moves','msglog','audit');
+  elsif op = 'update' then
+    return coll in ('contacts','inq','followups','appts','slots','inbox','sales','msglog');
+  elsif op = 'delete' then
+    return coll in ('slots','followups','inbox','inq','appts');
+  end if;
+  return false;
+end;
+$$;
+
+-- An admin can record a sale but cannot void it, refund it or add adjustments.
+create or replace function public.sales_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare o jsonb := case when tg_op = 'INSERT' then '{}'::jsonb else old.data end;
+begin
+  if new.collection = 'sales' and public.bg_role() = 'admin' then
+    if coalesce(o->'void','false'::jsonb) <> coalesce(new.data->'void','false'::jsonb)
+       or coalesce(o->'refund','0'::jsonb) <> coalesce(new.data->'refund','0'::jsonb)
+       or coalesce(o->'adj','[]'::jsonb) <> coalesce(new.data->'adj','[]'::jsonb) then
+      raise exception 'owner_only' using errcode = '42501', hint = 'Only the owner can void, refund or adjust a sale.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists sales_guard on public.records;
+create trigger sales_guard before insert or update on public.records
+  for each row execute function public.sales_guard();
+
 alter table public.records enable row level security;
 drop policy if exists "team can read"   on public.records;
 drop policy if exists "team can add"    on public.records;
 drop policy if exists "team can change" on public.records;
 drop policy if exists "team can delete" on public.records;
-create policy "team can read"   on public.records for select to authenticated using (true);
-create policy "team can add"    on public.records for insert to authenticated with check (true);
-create policy "team can change" on public.records for update to authenticated using (true) with check (true);
-create policy "team can delete" on public.records for delete to authenticated using (true);
+drop policy if exists "role read"   on public.records;
+drop policy if exists "role add"    on public.records;
+drop policy if exists "role change" on public.records;
+drop policy if exists "role delete" on public.records;
+create policy "role read"   on public.records for select to authenticated using (public.bg_allowed('select', collection));
+create policy "role add"    on public.records for insert to authenticated with check (public.bg_allowed('insert', collection));
+create policy "role change" on public.records for update to authenticated using (public.bg_allowed('update', collection)) with check (public.bg_allowed('update', collection));
+create policy "role delete" on public.records for delete to authenticated using (public.bg_allowed('delete', collection));
 revoke all on public.records from anon;
 grant select, insert, update, delete on public.records to authenticated;
+
+-- Team list and role changes, for the owner screen in the app (Settings > Team and access).
+create or replace function public.bg_team()
+returns table(email text, role text, last_sign_in_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if public.bg_role() is distinct from 'owner' then raise exception 'not_owner' using errcode = '42501'; end if;
+  return query select u.email::text, coalesce(t.role, 'admin'), u.last_sign_in_at
+               from auth.users u left join public.team_roles t on t.user_id = u.id order by u.created_at;
+end;
+$$;
+
+-- Change someone's access. Callable by an owner in the app, or by the database owner in the SQL editor
+-- (for example: select bg_set_role('kate@example.com', 'owner');).
+create or replace function public.bg_set_role(p_email text, p_role text) returns void
+language plpgsql security definer set search_path = public as $$
+declare uid uuid; em text; others int;
+begin
+  if auth.uid() is not null and public.bg_role() is distinct from 'owner' then raise exception 'not_owner' using errcode = '42501'; end if;
+  if p_role not in ('owner','admin') then raise exception 'bad_role'; end if;
+  select u.id, u.email into uid, em from auth.users u where lower(u.email) = lower(btrim(p_email)) limit 1;
+  if uid is null then raise exception 'no_such_user'; end if;
+  if p_role = 'admin' then
+    select count(*) into others from public.team_roles where role = 'owner' and user_id <> uid;
+    if others = 0 then raise exception 'last_owner'; end if;
+  end if;
+  insert into public.team_roles(user_id, email, role) values (uid, em, p_role)
+    on conflict (user_id) do update set role = excluded.role, email = excluded.email, updated_at = now();
+end;
+$$;
+
+revoke all on function public.bg_role() from public;
+revoke all on function public.bg_my_role() from public;
+revoke all on function public.bg_allowed(text, text) from public;
+revoke all on function public.bg_team() from public;
+revoke all on function public.bg_set_role(text, text) from public;
+grant execute on function public.bg_role() to authenticated;
+grant execute on function public.bg_my_role() to authenticated;
+grant execute on function public.bg_allowed(text, text) to authenticated;
+grant execute on function public.bg_team() to authenticated;
+grant execute on function public.bg_set_role(text, text) to authenticated;
 
 -- Live updates for the team.
 do $$

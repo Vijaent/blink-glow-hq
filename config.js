@@ -3,5 +3,7 @@
 // NEVER put the secret / service_role key or the database password here.
 window.BGHQ_CONFIG = {
   url: 'https://hspzeydgsmzhmrqvkozh.supabase.co',
-  key: 'sb_publishable_aOwIgn_vyY7YQEj8jazLJQ_ky_gtqq6'
+  key: 'sb_publishable_aOwIgn_vyY7YQEj8jazLJQ_ky_gtqq6',
+  // The one public address used for every booking link and QR code. Change it here if the site moves to its own domain.
+  publicUrl: 'https://blinknglow.vercel.app'
 };

@@ -17,6 +17,7 @@ const nextDow = (dow, min = 3) => { for (let i = min; i < 40; i++) { const s = n
   await db.exec(`
     create role anon nologin; create role authenticated nologin;
     create schema auth;
+    create table auth.users (id uuid primary key, email text, created_at timestamptz default now(), last_sign_in_at timestamptz);
     create function auth.uid() returns uuid language sql stable as
       $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     grant usage on schema auth to anon, authenticated; grant usage on schema public to anon, authenticated;
@@ -26,8 +27,12 @@ const nextDow = (dow, min = 3) => { for (let i = min; i < 40; i++) { const s = n
   await db.exec(SQL); await db.exec(SQL);
   ok('Schema installs, and re-running it is safe', true);
 
-  const UID = '22222222-0000-0000-0000-000000000001';
+  const UID = '22222222-0000-0000-0000-000000000001', UID2 = '22222222-0000-0000-0000-000000000002', UID3 = '22222222-0000-0000-0000-000000000003';
+  await db.query("insert into auth.users(id,email) values ($1,'kate@test'),($2,'amy@test'),($3,'new@test')", [UID, UID2, UID3]);
+  await db.query("select bg_set_role('kate@test','owner')");   // run by the database owner, as in the SQL editor
   const asTeam = async (sql, p) => { await db.exec(`reset role; select set_config('request.jwt.claim.sub','${UID}',false); set role authenticated;`);
+    try { return await db.query(sql, p); } finally { await db.exec(`reset role; select set_config('request.jwt.claim.sub','',false);`); } };
+  const asAdmin = async (sql, p) => { await db.exec(`reset role; select set_config('request.jwt.claim.sub','${UID2}',false); set role authenticated;`);
     try { return await db.query(sql, p); } finally { await db.exec(`reset role; select set_config('request.jwt.claim.sub','',false);`); } };
   const asAnon = async (sql, p) => { await db.exec(`reset role; set role anon;`); try { return await db.query(sql, p); } finally { await db.exec('reset role'); } };
   const errOf = async f => { try { await f(); return null; } catch (e) { return e.message; } };
@@ -125,6 +130,42 @@ const nextDow = (dow, min = 3) => { for (let i = min; i < 40; i++) { const s = n
   // service duration comes from the studio, not the browser (no way to pass a length)
   const fn = (await db.query("select pg_get_function_arguments('public.public_request_booking(text,text,int,text,text,text,text)'::regprocedure) a")).rows[0].a;
   ok('A customer cannot choose their own length or price', !/dur|price|staff/i.test(fn), fn);
+
+
+  // ── roles: owner and admin ──
+  ok('Owner is recognised', (await asTeam('select bg_my_role() r')).rows[0].r === 'owner');
+  ok('Someone not listed is an Admin by default', (await asAdmin('select bg_my_role() r')).rows[0].r === 'admin');
+  ok('Signed-out visitors have no role and cannot ask for one', !!(await errOf(() => asAnon('select bg_my_role()'))));
+  const seed = async (col, id, data) => db.query("insert into records(collection,id,data) values($1,$2,$3::jsonb) on conflict (collection,id) do update set data=excluded.data", [col, id, JSON.stringify(data)]);
+  await seed('expenses', 'e1', { amount: 500 }); await seed('accounts', 'a1', { name: 'M-Pesa' }); await seed('contacts', 'c9', { name: 'Zawadi' });
+  await seed('services', 'sv1', { name: 'Sew-in' }); await seed('cfg', 'settings', { biz: 'B&G' }); await seed('sales', 'sa1', { no: 'S1', total: 1000 });
+  const cnt = async (who, col) => (await who('select count(*)::int n from records where collection=$1', [col])).rows[0].n;
+  ok('Admin can read clients, sales and services', (await cnt(asAdmin, 'contacts')) === 1 && (await cnt(asAdmin, 'sales')) === 1 && (await cnt(asAdmin, 'services')) === 1);
+  ok('Admin cannot see expenses or the audit trail (empty, not an error)', (await cnt(asAdmin, 'expenses')) === 0);
+  ok('Owner sees expenses', (await cnt(asTeam, 'expenses')) === 1);
+  ok('Admin can add a client and a booking', !(await errOf(() => asAdmin("insert into records(collection,id,data) values('contacts','c10','{\"name\":\"New\"}'),('appts','ap1','{}')"))));
+  ok('Admin cannot add an expense', !!(await errOf(() => asAdmin("insert into records(collection,id,data) values('expenses','e2','{}')"))));
+  ok('Admin cannot change settings', !!(await errOf(() => asAdmin("update records set data='{}' where collection='cfg'"))) || (await db.query("select data->>'biz' b from records where collection='cfg'")).rows[0].b === 'B&G');
+  ok('Admin cannot edit services', (await asAdmin("update records set data='{\"name\":\"X\"}' where collection='services' returning id")).rows.length === 0);
+  ok('Admin cannot publish the public booking settings', !!(await errOf(() => asAdmin("update records set data='{}' where collection='pubcfg'"))) || (await asAdmin("update records set data='{}' where collection='pubcfg' returning id")).rows.length === 0);
+  ok('Admin can record a payment', !(await errOf(() => asAdmin("insert into records(collection,id,data) values('payments','p1','{\"amount\":500}')"))));
+  ok('Admin cannot edit a payment after it is recorded', (await asAdmin("update records set data='{\"amount\":1}' where collection='payments' returning id")).rows.length === 0);
+  ok('Admin cannot delete a payment or a client', (await asAdmin("delete from records where collection in ('payments','contacts') returning id")).rows.length === 0);
+  ok('Admin can free a slot (delete a booking slot)', (await asAdmin("delete from records where collection='slots' and id='manual2' returning id")).rows.length === 1);
+  ok('Admin can complete a sale (ordinary update)', (await asAdmin("update records set data=data||'{\"pending\":false}' where collection='sales' returning id")).rows.length === 1);
+  ok('Admin cannot void a sale', /owner_only/.test(await errOf(() => asAdmin("update records set data=data||'{\"void\":true}' where collection='sales'")) || ''));
+  ok('Admin cannot refund or adjust a sale', /owner_only/.test(await errOf(() => asAdmin("update records set data=data||'{\"refund\":200}' where collection='sales'")) || '') && /owner_only/.test(await errOf(() => asAdmin("update records set data=data||'{\"adj\":[{\"amount\":5}]}' where collection='sales'")) || ''));
+  ok('Owner can void a sale', !(await errOf(() => asTeam("update records set data=data||'{\"void\":true}' where collection='sales'"))));
+  ok('Admin cannot list the team or change roles', /not_owner/.test(await errOf(() => asAdmin('select * from bg_team()')) || '') && /not_owner/.test(await errOf(() => asAdmin("select bg_set_role('amy@test','owner')")) || ''));
+  ok('Signed-out visitors cannot call the team functions', !!(await errOf(() => asAnon("select bg_set_role('amy@test','owner')"))) && !!(await errOf(() => asAnon('select * from bg_team()'))));
+  ok('Owner sees every login, unlisted ones as admin', (await asTeam('select * from bg_team()')).rows.map(r => r.email + ':' + r.role).join() === 'kate@test:owner,amy@test:admin,new@test:admin');
+  await asTeam("select bg_set_role('amy@test','owner')");
+  ok('Owner can promote an admin to owner', (await asAdmin('select bg_my_role() r')).rows[0].r === 'owner');
+  await asTeam("select bg_set_role('amy@test','admin')");
+  ok('Owner can demote them again', (await asAdmin('select bg_my_role() r')).rows[0].r === 'admin');
+  ok('The last owner cannot be demoted', /last_owner/.test(await errOf(() => asTeam("select bg_set_role('kate@test','admin')")) || ''));
+  ok('An unknown email is rejected', /no_such_user/.test(await errOf(() => asTeam("select bg_set_role('ghost@test','admin')")) || ''));
+  ok('Role table is not readable directly by anyone signed in', !!(await errOf(() => asTeam('select * from team_roles'))));
 
   // ── what customers can see of the diary ──
   const busy = (await asAnon('select * from public_busy($1,$2)', [wed, wed])).rows;

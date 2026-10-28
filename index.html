@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#328566">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Blink &amp; Glow">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>Blink &amp; Glow HQ</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -170,7 +177,7 @@ code.link{display:block;overflow-wrap:anywhere;background:var(--soft);border:1px
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
-<script>window.__standalone=true;</script>
+<script>window.__standalone=true;if('serviceWorker' in navigator)addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})});</script>
 <script>
 //---------------------------------------------------------------------
 //
@@ -2557,7 +2564,7 @@ var qrcode = function() {
 'use strict';
 /* ================= configuration ================= */
 const DEF={biz:'Blink & Glow HQ',tz:'Africa/Nairobi',target:350000,studioPhone:'',mpesaNote:'',
- hours:{0:null,1:{o:'09:00',c:'18:00'},2:{o:'09:00',c:'18:00'},3:{o:'09:00',c:'18:00'},4:{o:'09:00',c:'18:00'},5:{o:'09:00',c:'19:00'},6:{o:'09:00',c:'19:00'}},
+ hours:{0:null,1:{o:'09:00',c:'20:00'},2:{o:'09:00',c:'20:00'},3:{o:'09:00',c:'20:00'},4:{o:'09:00',c:'20:00'},5:{o:'09:00',c:'20:00'},6:{o:'09:00',c:'20:00'}},
  breaks:[],blocks:[],defDur:180,buffer:15,step:30,notice:12,cancelHrs:24,reschedHrs:12,
  cancelRule:'Deposits are kept when a booking is cancelled with less than the notice above.',
  staff:['Kate','Stylist 1','Stylist 2'],
@@ -2597,6 +2604,7 @@ const ETYPES=['Operating','Inventory purchase','Capital expenditure','Owner with
 const D={contacts:[],inq:[],followups:[],services:[],appts:[],slots:[],requests:[],sales:[],payments:[],accounts:[],xfer:[],expenses:[],obligations:[],products:[],moves:[],campaigns:[],content:[],msglog:[],audit:[]};
 const PUBC={};
 let S=JSON.parse(JSON.stringify(DEF));
+let ROLE='owner';const isOwner=()=>ROLE==='owner';const ADMIN_TABS=['overview','bookings','clients','sales','stock'];
 let db=null,isAdmin=false,mode='boot',tab='overview',sub={},PER={k:'month',a:'',b:''},ready=false,dbErr='';
 const IDX={};
 const NAV=[['overview','Overview','M3 12l9-8 9 8M5 10v10h14V10'],['bookings','Bookings','M4 6h16v14H4zM4 10h16M8 3v4M16 3v4'],['clients','Clients','M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 4-6 8-6s8 2 8 6'],['sales','Sales','M4 20V10M10 20V4M16 20v-8M22 20H2'],['money','Finance Tracker','M3 7h18v12H3zM3 11h18M16 15h2'],['stock','Stock','M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8'],['services','Services','M6 3v8a3 3 0 006 0V3M9 11v10M18 3c-2 2-3 5-3 8h3v10'],['marketing','Marketing Park','M3 11v3h4l8 5V6L7 11zM18 9a4 4 0 010 6'],['reports','Reports','M6 3h9l4 4v14H6zM9 12h7M9 16h7'],['settings','Settings','M12 15a3 3 0 100-6 3 3 0 000 6zM19 12l2-1-2-4-2 1-2-1-1-2h-4l-1 2-2 1-2-1-2 4 2 1v2l-2 1 2 4 2-1 2 1 1 2h4l1-2 2-1 2 1 2-4-2-1z']];
@@ -2661,7 +2669,7 @@ function saveS(){syncPub();if(db)return db.doc(SETDOC).set(strip(S));saveLocalAl
 function audit(what,detail){put('audit',{at:new Date().toISOString(),what:what,detail:detail||''})}
 const pubBiz=()=>String(S.biz||'Blink & Glow').replace(/\s*HQ$/i,'').trim()||'Blink & Glow';
 let pubT=null;
-function syncPub(){if(!db||!isAdmin)return;clearTimeout(pubT);pubT=setTimeout(()=>{const svc=D.services.filter(s=>s.active!==false&&s.bookable!==false).map(s=>({id:s.id,name:s.name,price:s.promo||s.price||0,dur:s.dur||S.defDur,cat:s.cat||'',desc:s.desc||''}));
+function syncPub(){if(!db||!isAdmin||!isOwner())return;clearTimeout(pubT);pubT=setTimeout(()=>{const svc=D.services.filter(s=>s.active!==false&&s.bookable!==false).map(s=>({id:s.id,name:s.name,price:s.promo||s.price||0,dur:s.dur||S.defDur,cat:s.cat||'',desc:s.desc||''}));
  db.doc('pubcfg/main').set(strip({biz:pubBiz(),phone:S.studioPhone,tz:S.tz,hours:S.hours,breaks:S.breaks,blocks:S.blocks,buffer:S.buffer,step:S.step,notice:S.notice,staff:S.staff,cancelRule:S.cancelRule,services:svc,sources:S.sources,upd:Date.now()})).catch(()=>{})},800)}
 let renderT=null;function sched(){clearTimeout(renderT);renderT=setTimeout(render,60)}
 
@@ -2835,7 +2843,7 @@ function subtabs(key,items){const cur=sub[key]||items[0][0];return h('div',{clas
 function bars(rows,fmt){const mx=Math.max.apply(null,rows.map(r=>r[1]).concat([1]));return h('div',{class:'bars'},rows.map(r=>h('div',{class:'r'},[h('span',{text:r[0]}),h('div',{class:'bar'},[h('i',{style:'width:'+Math.max(2,r[1]/mx*100)+'%'})]),h('span',{style:'text-align:right',text:(fmt||num)(r[1])})])))}
 function csvDownload(name,heads,rows){const data='﻿'+[heads.map(csvCell).join(',')].concat(rows.map(r=>r.map(csvCell).join(','))).join('\n');
  if(window.claude&&window.claude.use)window.claude.use('downloads').then(d=>{if(!d){toast('Downloads are not available in this view',true);return}return d.save({filename:name,data:data}).then(()=>toast('Export ready')).catch(e=>toast(e&&e.code==='declined'?'Save cancelled':'Could not save the file',true))},()=>toast('Downloads are not available',true));else toast('Downloads are not available in this view',true)}
-function pubBase(){return (S.bookingBase||(SA?location.origin+location.pathname:location.href.split('#')[0])).replace(/#.*$/,'')}
+function pubBase(){if(SA){const u=String((window.BGHQ_CONFIG||{}).publicUrl||location.origin).replace(/[#?].*$/,'').replace(/\/+$/,'');return u+'/'}return (S.bookingBase||location.href.split('#')[0]).replace(/#.*$/,'')}
 function slug(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}
 const SRCCODE={'Instagram':'ig','TikTok':'tt','WhatsApp':'wa','Facebook':'fb','Referral':'ref','Walk-in':'walkin','Google':'google','Paid advertising':'ad'};
 const srcCode=s=>SRCCODE[s]||slug(s);
@@ -3123,10 +3131,10 @@ function viewSales(){const w=h('div',{class:'wrap'}),R=range(PER.k,PER.a,PER.b),
  const all=D.sales.slice().sort((a,b)=>a.date<b.date?1:-1),inP=all.filter(s=>inR(s.date,R.a,R.b));
  const valid=inP.filter(isSale);
  w.appendChild(h('div',{class:'row'},[h('button',{class:'btn',text:'New sale',onclick:()=>saleForm()}),h('button',{class:'btn ghost',text:'Record payment',onclick:()=>payForm()}),periodSel(),searchBox('s','Search sale or client'),selFilter('ss',[['all','All statuses'],['Unpaid','Unpaid'],['Part paid','Part paid'],['Paid','Paid'],['Booked','Booked (deposit)'],['Void','Void']],'Status')]));
- w.appendChild(h('div',{class:'grid'},[tile('Sales',money(sum(valid,saleNet)),R.label+' · '+valid.length+' sales'),tile('Money collected',money(sum(D.payments.filter(p=>inR(p.date,R.a,R.b)),p=>p.amount)),'payments received'),tile('Still owed',money(sum(outstanding(),saleBal)),outstanding().length+' sales, all time',outstanding().length?['warn','Chase']:['good','Clear']),tile('Average sale',valid.length?money(sum(valid,saleNet)/valid.length):'n/a','')]));
+ w.appendChild(!isOwner()?document.createDocumentFragment():h('div',{class:'grid'},[tile('Sales',money(sum(valid,saleNet)),R.label+' · '+valid.length+' sales'),tile('Money collected',money(sum(D.payments.filter(p=>inR(p.date,R.a,R.b)),p=>p.amount)),'payments received'),tile('Still owed',money(sum(outstanding(),saleBal)),outstanding().length+' sales, all time',outstanding().length?['warn','Chase']:['good','Clear']),tile('Average sale',valid.length?money(sum(valid,saleNet)/valid.length):'n/a','')]));
  let list=inP.filter(s=>(fs==='all'||saleStatus(s)===fs)&&(!q||(s.no+' '+cName(s.contactId)).toLowerCase().includes(q)));
  w.appendChild(tbl(['Sale','Date','Client','Items','#Total','#Paid','#Owed','Status','Channel',''],list.map(s=>[s.no,fd(s.date),cName(s.contactId),(s.lines||[]).map(l=>l.name||'Item').join(', '),money(saleNet(s)),money(salePaid(s)),s.void?'—':money(Math.max(0,saleBal(s))),pill(saleStatus(s),{Paid:'good',Unpaid:'bad','Part paid':'warn',Void:'',Booked:'green',Overpaid:'warn'}[saleStatus(s)]),s.channel||'—',
-  h('span',{class:'act'},s.void?[]:[saleBal(s)>0||s.pending?h('button',{class:'btn sm',text:'Payment',onclick:()=>payForm(s)}):null,' ',saleBal(s)>0&&!s.pending&&IDX.contact[s.contactId]?h('button',{class:'btn ghost sm',text:'Remind',onclick:()=>waModal(s.contactId,'payment',{amount:money(saleBal(s)),service:(s.lines[0]||{}).name||'your visit'})}):null,' ',h('button',{class:'btn ghost sm',text:'Adjust',onclick:()=>adjForm(s)}),' ',h('button',{class:'btn danger sm',text:'Void',onclick:()=>voidSale(s)})])]),
+  h('span',{class:'act'},s.void?[]:[saleBal(s)>0||s.pending?h('button',{class:'btn sm',text:'Payment',onclick:()=>payForm(s)}):null,' ',saleBal(s)>0&&!s.pending&&IDX.contact[s.contactId]?h('button',{class:'btn ghost sm',text:'Remind',onclick:()=>waModal(s.contactId,'payment',{amount:money(saleBal(s)),service:(s.lines[0]||{}).name||'your visit'})}):null,' ',isOwner()?h('button',{class:'btn ghost sm',text:'Adjust',onclick:()=>adjForm(s)}):null,' ',isOwner()?h('button',{class:'btn danger sm',text:'Void',onclick:()=>voidSale(s)}):null])]),
   {empty:emptyBox('No sales in this period','Record a sale, or complete a booking and the sale is created for you.',h('button',{class:'btn',text:'New sale',onclick:()=>saleForm()}))}));
  w.appendChild(h('p',{class:'hint',text:'Total counts the sale once. Payments, even several, never add to sales. “Booked” sales are deposits for future appointments and count as sales only after completion.'}));return w}
 function periodSel(){const s=h('select',{id:'s-per','aria-label':'Period',style:'width:auto',onchange:e=>{PER.k=e.target.value;render()}},[['month','This month'],['last','Last month'],['quarter','This quarter'],['ytd','Year to date'],['30','Last 30 days'],['custom','Custom range']].map(o=>h('option',{value:o[0],text:o[1]})));s.value=PER.k;
@@ -3213,9 +3221,9 @@ function moveForm(p){openForm({title:'Stock adjustment',done:'Movement recorded'
   await put('moves',{date:v.date,productId:x.id,type:v.type.startsWith('Adjustment')?'Adjustment':v.type,qty:q,unitCost:prodAvg(x),note:v.note})}})}
 function viewStock(){const w=h('div',{class:'wrap'}),t=todayStr(),ps=D.products.filter(p=>!p.archived);
  const low=ps.filter(p=>p.min>0&&(IDX.qty[p.id]||0)<=p.min),exp=ps.filter(p=>p.expiry&&daysBetween(t,p.expiry)<=S.stockWarnDays&&(IDX.qty[p.id]||0)>0);
- w.appendChild(h('div',{class:'row'},[h('button',{class:'btn',text:'New product',onclick:()=>productForm()}),h('button',{class:'btn ghost',text:'Receive stock',onclick:()=>ps.length?receiveForm():toast('Add a product first',true)}),h('button',{class:'btn ghost',text:'Adjust stock',onclick:()=>ps.length?moveForm():toast('Add a product first',true)}),h('button',{class:'btn ghost',text:'Export CSV',onclick:()=>csvDownload('stock.csv',['Product','SKU','Category','Supplier','Unit','On hand','Avg cost','Min','Expiry'],ps.map(p=>[p.name,p.sku,p.cat,p.supplier,p.unit,IDX.qty[p.id]||0,prodAvg(p),p.min,p.expiry]))})]));
- w.appendChild(h('div',{class:'grid'},[tile('Stock value',money(sum(ps,p=>Math.max(0,IDX.qty[p.id]||0)*prodAvg(p))),'at average cost'),tile('Low stock',String(low.length),'at or below minimum',low.length?['warn','Reorder']:['good','OK']),tile('Expiring soon',String(exp.length),'within '+S.stockWarnDays+' days',exp.length?['warn','Check']:['good','OK'])]));
- w.appendChild(tbl(['Product','Category','#On hand','#Min','#Avg cost','#Value','Expiry','Status',''],ps.map(p=>{const q=IDX.qty[p.id]||0,isLow=p.min>0&&q<=p.min,isExp=p.expiry&&daysBetween(t,p.expiry)<=S.stockWarnDays&&q>0;return [p.name+(p.sku?' · '+p.sku:''),p.cat||'—',q+' '+(p.unit||''),p.min||'—',money(prodAvg(p)),money(Math.max(0,q)*prodAvg(p)),p.expiry?fdy(p.expiry):'—',isExp?pill(daysBetween(t,p.expiry)<0?'Expired':'Expiring','bad'):isLow?pill('Low','warn'):pill('OK','good'),h('span',{class:'act'},[h('button',{class:'btn sm',text:'Receive',onclick:()=>receiveForm(p)}),' ',h('button',{class:'btn ghost sm',text:'Adjust',onclick:()=>moveForm(p)}),' ',h('button',{class:'btn ghost sm',text:'Edit',onclick:()=>productForm(p)}),' ',h('button',{class:'btn danger sm',text:'Archive',onclick:()=>confirmBox('Archive '+p.name+'? Its history stays.',()=>patch('products',p.id,{archived:true}),'Archive')})])]}),{empty:emptyBox('No products yet','Add beauty supplies and wigs you hold, with cost and quantity.',h('button',{class:'btn',text:'New product',onclick:()=>productForm()}))}));
+ w.appendChild(h('div',{class:'row'},[isOwner()?h('button',{class:'btn',text:'New product',onclick:()=>productForm()}):null,isOwner()?h('button',{class:'btn ghost',text:'Receive stock',onclick:()=>ps.length?receiveForm():toast('Add a product first',true)}):null,h('button',{class:'btn ghost',text:'Adjust stock',onclick:()=>ps.length?moveForm():toast('Add a product first',true)}),isOwner()?h('button',{class:'btn ghost',text:'Export CSV',onclick:()=>csvDownload('stock.csv',['Product','SKU','Category','Supplier','Unit','On hand','Avg cost','Min','Expiry'],ps.map(p=>[p.name,p.sku,p.cat,p.supplier,p.unit,IDX.qty[p.id]||0,prodAvg(p),p.min,p.expiry]))}):null]));
+ w.appendChild(!isOwner()?document.createDocumentFragment():h('div',{class:'grid'},[tile('Stock value',money(sum(ps,p=>Math.max(0,IDX.qty[p.id]||0)*prodAvg(p))),'at average cost'),tile('Low stock',String(low.length),'at or below minimum',low.length?['warn','Reorder']:['good','OK']),tile('Expiring soon',String(exp.length),'within '+S.stockWarnDays+' days',exp.length?['warn','Check']:['good','OK'])]));
+ w.appendChild(tbl(['Product','Category','#On hand','#Min','#Avg cost','#Value','Expiry','Status',''],ps.map(p=>{const q=IDX.qty[p.id]||0,isLow=p.min>0&&q<=p.min,isExp=p.expiry&&daysBetween(t,p.expiry)<=S.stockWarnDays&&q>0;return [p.name+(p.sku?' · '+p.sku:''),p.cat||'—',q+' '+(p.unit||''),p.min||'—',money(prodAvg(p)),money(Math.max(0,q)*prodAvg(p)),p.expiry?fdy(p.expiry):'—',isExp?pill(daysBetween(t,p.expiry)<0?'Expired':'Expiring','bad'):isLow?pill('Low','warn'):pill('OK','good'),h('span',{class:'act'},[isOwner()?h('button',{class:'btn sm',text:'Receive',onclick:()=>receiveForm(p)}):null,' ',h('button',{class:'btn ghost sm',text:'Adjust',onclick:()=>moveForm(p)}),' ',isOwner()?h('button',{class:'btn ghost sm',text:'Edit',onclick:()=>productForm(p)}):null,' ',isOwner()?h('button',{class:'btn danger sm',text:'Archive',onclick:()=>confirmBox('Archive '+p.name+'? Its history stays.',()=>patch('products',p.id,{archived:true}),'Archive')}):null])]}),{empty:emptyBox('No products yet',isOwner()?'Add beauty supplies and wigs you hold, with cost and quantity.':'The owner adds products. Once they exist you can record usage with Adjust stock.',isOwner()?h('button',{class:'btn',text:'New product',onclick:()=>productForm()}):null)}));
  w.appendChild(card('Stock movements','Newest first. This is the ledger. Corrections are new rows.',tbl(['Date','Product','Type','#Quantity','#Unit cost','Note'],D.moves.slice().sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:(b.ts||0)-(a.ts||0)).slice(0,80).map(m=>[fd(m.date),(IDX.product[m.productId]||{}).name||'(removed)',m.type,(m.qty>0?'+':'')+m.qty,money(m.unitCost),m.note||'']))));return w}
 
 const STARTER=[['Sew-in Signature','Sew-in',4500,240],['Sew-in Essential','Sew-in',3500,180],['Wig installation','Wigs',2500,90],['Wash and style','Care',1800,90],['Makeup and lashes','Beauty',3000,90],['Wig repairs','Care',1500,60],['Wig purchase','Wigs',0,60]];
@@ -3293,6 +3301,19 @@ function insights(R){const L=[],t=todayStr(),m=metrics(R.a,R.b);
  return L}
 function hasDemo(){return Object.keys(D).some(k=>D[k].some(r=>r.demo))}
 function demoBanner(){return hasDemo()?h('div',{class:'banner'},[h('p',{text:'Demonstration data is loaded. These figures are made up and are not Blink & Glow’s performance.'}),h('button',{class:'btn',text:'Remove demo data',onclick:()=>confirmBox('Remove all demonstration records? Your real entries stay.',removeDemo,'Remove demo data')})]):null}
+
+/* ================= Admin overview (no revenue or profit figures) ================= */
+function viewOverviewAdmin(){const w=h('div',{class:'wrap'}),t=todayStr();
+ const live=a=>!/cancel|no.?show/i.test(a.status||'');
+ const todays=D.appts.filter(a=>a.date===t&&live(a)).sort((a,b)=>a.start-b.start);
+ const up=D.appts.filter(a=>a.date>t&&['Pending confirmation','Confirmed','Rescheduled'].includes(a.status)).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:a.start-b.start).slice(0,8);
+ const reqs=D.requests.filter(r=>r.status==='New'),fus=D.followups.filter(f=>f.status!=='Done'&&f.due<=t);
+ w.appendChild(h('div',{class:'grid'},[tile('Appointments today',num(todays.length),fdy(t)),tile('Requests to confirm',num(reqs.length),reqs.length?'Open Bookings, then Requests':'None waiting',reqs.length?['warn','Action']:null),tile('Follow-ups due',num(fus.length),fus.length?'Open Clients, then Follow-ups':'All caught up',fus.length?['warn','Action']:null),tile('Unpaid sales',num(outstanding().length),'sales with a balance')]));
+ const row=a=>{const r=[fd(a.date)+' '+mstr(a.start),cName(a.contactId),(IDX.service[a.serviceId]||{}).name||'—',a.staff||'—',pill(a.status,a.status==='Pending confirmation'?'warn':'green')];r.onclick=()=>{tab='bookings';render()};return r};
+ w.appendChild(card('Today','Appointments on today’s diary.',tbl(['When','Client','Service','Stylist','Status'],todays.map(row),{empty:emptyBox('Nothing booked today','Use Quick add to add a booking.')})));
+ w.appendChild(card('Coming up',null,tbl(['When','Client','Service','Stylist','Status'],up.map(row),{empty:emptyBox('No upcoming appointments','')})));
+ return w}
+
 function viewOverview(){const w=h('div',{class:'wrap'}),R=range(PER.k,PER.a,PER.b),m=metrics(R.a,R.b),pm=metrics(R.pa,R.pb),hasPrev=D.sales.some(s=>inR(s.date,R.pa,R.pb));
  const db_=demoBanner();if(db_)w.appendChild(db_);
  w.appendChild(h('div',{class:'row sp'},[h('div',{},[h('span',{class:'msg',text:R.label+': '+fdy(R.a)+' to '+fdy(R.b)}),R.inc?h('span',{},[' ',pill('Month to date: '+R.elapsed+' of '+R.len+' days','warn')]):null]),periodSel()]));
@@ -3371,12 +3392,24 @@ function capacityCard(){const R=range('last'),m=metrics(R.a,R.b);const q=(k,d)=>
   h('div',{class:'grid'},[tile('Sales needed a month',num(c.sales),num(c.perWeek)+' a week'),tile('Appointments to book',num(c.appts),'allowing for cancellations'),tile('Hours needed',num(c.hrs),'of '+num(c.capH)+' open stylist hours'),tile('Hours used',pct(c.util),S.staff.length+' stylists, current opening hours'),tile('Inquiries needed',isFinite(c.inq)?num(c.inq):'n/a','at '+pct(cv)+' conversion')]),
   h('div',{class:'banner '+(verdict[0]==='good'?'info':'')},[h('p',{text:verdict[1]})]),h('p',{class:'hint',text:'Rule: sales = target ÷ average sale; appointments = sales ÷ (1 − cancel rate); hours = appointments × hours each; capacity = weekly open hours × stylists × 4.33. This ignores seasonality and walk-in demand.'})]))}
 
+
+/* ================= Team and access (owner only) ================= */
+function teamCard(){const box=h('div',{style:'display:flex;flex-direction:column;gap:10px'},[h('p',{class:'hint',text:'Loading team…'})]);
+ const load=async()=>{try{const r=await window.bghq.sb.rpc('bg_team');if(r.error)throw r.error;const rows=r.data||[];box.innerHTML='';
+   box.appendChild(tbl(['Email','Last sign-in','Access'],rows.map(u=>{
+     const sel=h('select',{'aria-label':'Access for '+u.email,style:'width:auto',onchange:async e=>{const v=e.target.value;try{const x=await window.bghq.sb.rpc('bg_set_role',{p_email:u.email,p_role:v});if(x.error)throw x.error;toast('Access updated for '+u.email)}catch(err){toast(/last_owner/.test(String(err&&err.message))?'There must always be at least one Owner.':'Could not change access',true);await load()}}},[['owner','Owner: everything'],['admin','Admin: day-to-day only']].map(o=>h('option',{value:o[0],text:o[1]})));
+     sel.value=u.role==='owner'?'owner':'admin';
+     return [u.email,u.last_sign_in_at?fdy(String(u.last_sign_in_at).slice(0,10)):'Never',sel]}),{empty:h('p',{class:'hint',text:'No users yet.'})}));
+   box.appendChild(h('p',{class:'hint',text:'To add a person, create their login in the Supabase dashboard (Authentication, Users, Add user). They appear here as Admin, and you can make them Owner.'}))}
+  catch(e){box.innerHTML='';box.appendChild(h('p',{class:'err',text:'Could not load the team list.'}))}};
+ load();return card('Team and access','Owner sees and changes everything. Admin handles clients, bookings, sales and stock, and cannot see finance, reports or settings.',box)}
+
 /* ================= Settings ================= */
 function viewSettings(){const w=h('div',{class:'wrap'}),F={};
  const inp=(k,l,v,t,hint)=>{const e=h(t==='ta'?'textarea':'input',{id:'st-'+k,type:t==='ta'?null:(t||'text'),oninput:()=>{w.setAttribute('data-dirty','1')}});e.value=v==null?'':v;F[k]=e;return h('label',{class:t==='ta'?'full':''},[l,e,hint?h('small',{text:hint}):null])};
  const cardF=(t,h2,kids)=>card(t,h2,h('div',{class:'fgrid'},kids));
- w.appendChild(cardF('Business','',[inp('biz','Business name',S.biz),inp('studioPhone','Studio WhatsApp number',S.studioPhone,'tel','Used for booking confirmations. Format 0712 345 678 or +254…'),inp('target','Monthly revenue target (KSh)',S.target,'number'),inp('bookingBase','Booking link base',S.bookingBase||'','text','Paste this page’s share link from the Share menu. Booking links are built from it.'),inp('fyStart','Financial year starts (MM-DD)',S.fyStart),inp('shortLinks','Short links (one per line: General = https://…  or  Instagram = https://…)',S.shortLinks||'','ta','Optional. Paste shortened links made in a link shortener. They replace the long links everywhere.'),h('label',{},['Time zone',(F.tz=h('select',{id:'st-tz'},[['Africa/Nairobi','Africa/Nairobi (EAT)'],['Africa/Kampala','Africa/Kampala'],['Africa/Dar_es_Salaam','Africa/Dar es Salaam'],['UTC','UTC']].map(o=>h('option',{value:o[0],text:o[1]}))))]),h('small',{text:'Currency is Kenyan shillings (KSh).'})]));
- F.tz.value=S.tz;
+ w.appendChild(cardF('Business','',[inp('biz','Business name',S.biz),inp('studioPhone','Studio WhatsApp number',S.studioPhone,'tel','Used for booking confirmations. Format 0712 345 678 or +254…'),inp('target','Monthly revenue target (KSh)',S.target,'number'),inp('bookingBase',SA?'Booking page address (fixed by the system)':'Booking link base',SA?pubBase():(S.bookingBase||''),'text',SA?'Booking links and QR codes always use this address, so they cannot be mistyped.':'Paste this page’s share link from the Share menu. Booking links are built from it.'),inp('fyStart','Financial year starts (MM-DD)',S.fyStart),inp('shortLinks','Short links (one per line: General = https://…  or  Instagram = https://…)',S.shortLinks||'','ta','Optional. Paste shortened links made in a link shortener. They replace the long links everywhere.'),h('label',{},['Time zone',(F.tz=h('select',{id:'st-tz'},[['Africa/Nairobi','Africa/Nairobi (EAT)'],['Africa/Kampala','Africa/Kampala'],['Africa/Dar_es_Salaam','Africa/Dar es Salaam'],['UTC','UTC']].map(o=>h('option',{value:o[0],text:o[1]}))))]),h('small',{text:'Currency is Kenyan shillings (KSh).'})]));
+ F.tz.value=S.tz;if(SA&&F.bookingBase)F.bookingBase.disabled=true;
  const hr=[1,2,3,4,5,6,0].map(d=>{const x=S.hours[d]||{o:'',c:''};const o=h('input',{type:'time',id:'st-ho'+d,value:x.o,oninput:()=>w.setAttribute('data-dirty','1')}),c=h('input',{type:'time',id:'st-hc'+d,value:x.c,oninput:()=>w.setAttribute('data-dirty','1')});F['ho'+d]=o;F['hc'+d]=c;return h('label',{},[DAYN[d]+' open and close (empty = closed)',h('div',{class:'row',style:'flex-wrap:nowrap'},[o,c])])});
  w.appendChild(cardF('Working hours','Booking availability follows these hours. Sunday closed is an assumption to confirm.',hr));
  w.appendChild(cardF('Booking rules','The default appointment length is 180 minutes. Each service can set its own.',[inp('defDur','Default appointment length (minutes)',S.defDur,'number'),inp('buffer','Buffer after each appointment (minutes)',S.buffer,'number'),inp('step','Start-time steps (minutes)',S.step,'number'),inp('notice','Minimum booking notice (hours)',S.notice,'number'),inp('cancelHrs','Free cancellation up to (hours before)',S.cancelHrs,'number'),inp('reschedHrs','Rescheduling allowed up to (hours before)',S.reschedHrs,'number'),inp('cancelRule','Cancellation rule shown to clients',S.cancelRule,'ta'),
@@ -3388,7 +3421,7 @@ function viewSettings(){const w=h('div',{class:'wrap'}),F={};
  F.noNeg.checked=!!S.noNeg;F.autoConsume.checked=!!S.autoConsume;
  const msg=h('span',{class:'msg'});
  w.appendChild(h('div',{class:'row',style:'position:sticky;bottom:12px'},[h('button',{class:'btn',text:'Save settings',onclick:async()=>{try{
-  const n=k=>Number(F[k].value)||0;S.biz=F.biz.value.trim()||'Blink & Glow HQ';S.studioPhone=F.studioPhone.value.trim();S.target=n('target')||S.target;S.bookingBase=F.bookingBase.value.trim();S.shortLinks=F.shortLinks.value;S.fyStart=F.fyStart.value.trim()||'01-01';S.tz=F.tz.value;
+  const n=k=>Number(F[k].value)||0;S.biz=F.biz.value.trim()||'Blink & Glow HQ';S.studioPhone=F.studioPhone.value.trim();S.target=n('target')||S.target;S.bookingBase=SA?'':F.bookingBase.value.trim();S.shortLinks=F.shortLinks.value;S.fyStart=F.fyStart.value.trim()||'01-01';S.tz=F.tz.value;
   [0,1,2,3,4,5,6].forEach(d=>{const o=F['ho'+d].value,c=F['hc'+d].value;S.hours[d]=o&&c?{o:o,c:c}:null});
   S.defDur=n('defDur')||180;S.buffer=n('buffer');S.step=n('step')||30;S.notice=n('notice');S.cancelHrs=n('cancelHrs');S.reschedHrs=n('reschedHrs');S.cancelRule=F.cancelRule.value;
   S.breaks=lines(F.breaks.value).map(l=>{const m=/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/.exec(l);return m?{from:m[1],to:m[2]}:null}).filter(Boolean);
@@ -3397,6 +3430,7 @@ function viewSettings(){const w=h('div',{class:'wrap'}),F={};
   S.inactiveDays=n('inactiveDays')||90;S.repeatDefault=n('repeatDefault')||35;FU_TYPES.forEach(k=>{S.fu[k]=n('fu_'+k)});Object.keys(TPL_LABEL).forEach(k=>{S.templates[k]=F['tp_'+k].value});
   S.noNeg=F.noNeg.checked;S.autoConsume=F.autoConsume.checked;S.stockWarnDays=n('stockWarnDays')||30;
   await saveS();w.removeAttribute('data-dirty');msg.textContent='';toast('Settings saved')}catch(e){msg.textContent='Could not save: '+(e&&e.message||'try again')}}}),msg]));
+ if(SA&&window.bghq)w.appendChild(teamCard());
  w.appendChild(card('Connections','Only items marked Working have been set up and tested. Nothing is pretended.',tbl(['Connection','Status','Note'],[['WhatsApp click-to-chat','Working','Opens WhatsApp with your message. You press send.'],['WhatsApp Business API (automatic messages)','Not configured','Needs a Meta Business account, a verified number and a server. Not possible inside this page.'],['Email and SMS confirmations','Unavailable','No provider is connected.'],['Shared database',db?'Working':'Local only',db?(SA?'Supabase: every signed-in team member sees the same records live.':'Records are shared between everyone with edit access.'):'This view is not connected to the shared database. Data stays in this browser.'],['M-Pesa and bank balances','Unavailable','Balances are calculated from your entries. Live balances need an integration.'],['Dedicated server and logins (Supabase)',SA?'Working':'Pending',SA?'Team logins, row-level security and server-side booking checks.':'Needed for a fully public booking page with server-side checks.']].map(r=>[r[0],pill(r[1],r[1]==='Working'?'good':r[1]==='Pending'?'warn':''),r[2]]))));
  w.appendChild(card('Data tools','',h('div',{class:'row'},[h('button',{class:'btn ghost',text:'Run self-tests',onclick:selfTestModal}),h('button',{class:'btn ghost',text:'Export all clients (CSV)',onclick:()=>csvDownload('clients.csv',['Name','Phone','Email','Source','Status','Visits','Spend','Last visit'],D.contacts.map(c=>[c.name,c.phone,c.email,c.source,life(c),(IDX.cs[c.id]||{}).visits,(IDX.cs[c.id]||{}).spend,(IDX.cs[c.id]||{}).last]))}),h('button',{class:'btn ghost',text:'Export payments (CSV)',onclick:()=>csvDownload('payments.csv',['Date','Amount','Method','Account','Sale','Reference'],D.payments.map(p=>[p.date,p.amount,p.method,(D.accounts.find(a=>a.id===p.accountId)||{}).name,(D.sales.find(s=>s.id===p.saleId)||{}).no||'',p.ref]))}),h('button',{class:'btn ghost',text:'Export bookings (CSV)',onclick:()=>csvDownload('bookings.csv',['Date','Start','Client','Service','Stylist','Status','Price','Deposit'],D.appts.map(a=>[a.date,mstr(a.start),cName(a.contactId),(IDX.service[a.serviceId]||{}).name,a.staff,a.status,a.price,a.deposit]))}),h('button',{class:'btn ghost',text:'Load demonstration data',onclick:loadDemo}),h('button',{class:'btn danger',text:'Remove demonstration data',onclick:()=>confirmBox('Remove all demonstration records?',removeDemo,'Remove')})])));
  w.appendChild(card('Access and data safety','',h('div',{style:'display:flex;flex-direction:column;gap:8px'},SA?[h('p',{style:'margin:0',text:'Only signed-in team members can see clients, sales or money. Customers use the public booking page, which can see free times but nothing else. Overlapping bookings are refused by the database itself, even if two people book at the same moment.'}),h('p',{style:'margin:0',text:'Money is stored as whole shillings. Backups: Supabase backups plus the CSV exports above. Edits are recorded in an audit trail ('+D.audit.length+' entries).'})]:[h('p',{style:'margin:0',text:'Who sees what: people with edit access to this page (Editors) see the full dashboard and all records. Anyone else who can open the link sees only the public booking page.'}),h('p',{style:'margin:0',text:'Limits of this version: bookings are guarded by a claim-and-verify step, not a database rule. For a public page with no sign-in and database-enforced rules, use the standalone version.'})])));
@@ -3470,12 +3504,24 @@ function selfTestModal(){const T=selfTests(),bad=T.filter(t=>!t[1]).length;modal
 window.__hub.tests=selfTests;
 
 /* ================= shell ================= */
-const VIEWS={overview:viewOverview,bookings:viewBookings,clients:viewClients,sales:viewSales,money:viewMoney,stock:viewStock,services:viewServices,marketing:viewMarketing,reports:viewReports,settings:viewSettings};
+const VIEWS={overview:()=>isOwner()?viewOverview():viewOverviewAdmin(),bookings:viewBookings,clients:viewClients,sales:viewSales,money:viewMoney,stock:viewStock,services:viewServices,marketing:viewMarketing,reports:viewReports,settings:viewSettings};
 const TITLES={overview:['Overview','What is happening in the business right now'],bookings:['Bookings','Appointments, requests and the booking link'],clients:['Clients','One list for leads, new and returning clients'],sales:['Sales','Every sale, payment status and balance'],money:['Finance Tracker','Payments, spending, accounts and profit'],stock:['Stock','Products, movements and alerts'],services:['Services','Catalogue and what each service really earns'],marketing:['Marketing Park','Content plan and what it brings in'],reports:['Reports','Reviews, sources and planning'],settings:['Settings','Hours, rules, lists and templates']};
 let minimised=false;
-function quickAdd(){const acts=[['New client',()=>contactForm()],['New inquiry',()=>inquiryForm()],['New booking',()=>bookingForm()],['New sale',()=>saleForm()],['New payment',()=>payForm()],['New expense',()=>expenseForm()],['Stock adjustment',()=>D.products.length?moveForm():toast('Add a product in Stock first',true)],['New content item',()=>contentForm()]];
+function quickAdd(){const acts=[['New client',()=>contactForm()],['New inquiry',()=>inquiryForm()],['New booking',()=>bookingForm()],['New sale',()=>saleForm()],['New payment',()=>payForm()],['New expense',()=>expenseForm(),1],['Stock adjustment',()=>D.products.length?moveForm():toast('Add a product in Stock first',true)],['New content item',()=>contentForm(),1]].filter(a=>isOwner()||!a[2]);
  modal('Quick add',h('div',{class:'grid'},acts.map(a=>h('button',{class:'btn ghost',type:'button',text:a[0],onclick:()=>{closeModal();a[1]()}}))))}
 function dataList(){let dl=$('#dl-contacts');if(!dl){dl=h('datalist',{id:'dl-contacts'});document.body.appendChild(dl)}if(!isAdmin){dl.innerHTML='';return}dl.innerHTML='';D.contacts.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(c=>dl.appendChild(h('option',{value:contactLabel(c)})))}
+let deferredInstall=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstall=e;sched()});
+window.addEventListener('appinstalled',()=>{deferredInstall=null;sched()});
+const isStandalone=()=>{try{return window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}catch(e){return false}};
+function installHelp(){const ios=/iphone|ipad|ipod/i.test(navigator.userAgent||'');
+ modal('Put Blink & Glow HQ on your phone',h('div',{style:'display:flex;flex-direction:column;gap:10px'},[
+  h('p',{style:'margin:0',text:'It then opens like any app, full screen, with its own icon.'}),
+  h('b',{text:'iPhone or iPad (use Safari)'}),h('p',{style:'margin:0',text:'Tap the Share button at the bottom, scroll down, tap Add to Home Screen, then Add.'}),
+  h('b',{text:'Android (use Chrome)'}),h('p',{style:'margin:0',text:'Tap the three dots at the top right, then Install app (or Add to Home screen).'}),
+  h('b',{text:'Computer (Chrome or Edge)'}),h('p',{style:'margin:0',text:'Click the install icon at the right end of the address bar, then Install.'}),
+  ios?h('p',{class:'hint',text:'On iPhone this only works from Safari, not from inside another app.'}):null]))}
+function installBtn(){if(!SA||isStandalone())return null;
+ return h('button',{class:'btn ghost sm',type:'button',style:'margin-top:8px',text:'Install on phone',onclick:async()=>{if(deferredInstall){const p=deferredInstall;deferredInstall=null;try{await p.prompt()}catch(e){}sched()}else installHelp()}})}
 function isPublicView(){return (!isAdmin)||/^#book/.test(location.hash||'')}
 function render(){const root=$('#root');if(!root)return;
  const a=document.activeElement,fid=a&&a.id,ss=a&&a.selectionStart,se=a&&a.selectionEnd;
@@ -3484,11 +3530,12 @@ function render(){const root=$('#root');if(!root)return;
  root.innerHTML='';
  if(isPublicView()){root.appendChild(viewPublic());return}
  dataList();
+ if(!isOwner()&&!ADMIN_TABS.includes(tab))tab='overview';
  const app=h('div',{class:'app'+(minimised?' min':'')+(sub.menu?' open':'')});
  const side=h('aside',{class:'side','aria-label':'Main navigation'},[h('div',{class:'logo'},[h('i',{text:'B'}),h('b',{text:S.biz})]),
-  h('nav',{class:'nav'},NAV.map(n=>h('button',{type:'button','aria-current':tab===n[0]?'page':null,onclick:()=>{tab=n[0];sub.menu=false;try{localStorage.setItem('bnghub-tab',tab)}catch(e){}render();scrollTo(0,0)}},[(()=>{const ic=h('span',{style:'display:flex'});ic.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+n[2]+'"/></svg>';return ic})(),h('span',{text:n[1]})]))),
+  h('nav',{class:'nav'},NAV.filter(n=>isOwner()||ADMIN_TABS.includes(n[0])).map(n=>h('button',{type:'button','aria-current':tab===n[0]?'page':null,onclick:()=>{tab=n[0];sub.menu=false;try{localStorage.setItem('bnghub-tab',tab)}catch(e){}render();scrollTo(0,0)}},[(()=>{const ic=h('span',{style:'display:flex'});ic.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+n[2]+'"/></svg>';return ic})(),h('span',{text:n[1]})]))),
   h('button',{class:'btn ghost sm',type:'button',style:'margin-top:8px',text:minimised?'Expand':'Collapse menu',onclick:()=>{minimised=!minimised;render()}}),
-  h('div',{class:'sidefoot'},[db?'Shared database connected':'Saving in this browser only',SA&&window.bghq?h('div',{},[h('button',{class:'btn ghost sm',type:'button',style:'margin-top:8px',text:'Sign out',onclick:()=>window.bghq.signOut()})]):null])]);
+  h('div',{class:'sidefoot'},[db?'Shared database connected':'Saving in this browser only',SA?h('div',{style:'margin-top:4px'},[h('b',{text:isOwner()?'Owner access':'Admin access'})]):null,installBtn(),SA&&window.bghq?h('div',{},[h('button',{class:'btn ghost sm',type:'button',style:'margin-top:8px',text:'Sign out',onclick:()=>window.bghq.signOut()})]):null])]);
  const tt=TITLES[tab]||['',''];
  const top=h('div',{class:'topbar'},[h('button',{class:'btn ghost burger',type:'button','aria-label':'Open menu',text:'Menu',onclick:()=>{sub.menu=!sub.menu;render()}}),h('div',{class:'grow'},[h('h1',{text:tt[0]}),h('div',{class:'sub',text:tt[1]})]),h('button',{class:'btn',type:'button',text:'Quick add',onclick:quickAdd}),h('button',{class:'btn ghost',type:'button',text:'Booking page',onclick:()=>{location.hash='#book';sched()}})]);
  const main=h('main',{class:'main'},[top]);
@@ -3508,7 +3555,9 @@ async function boot(){render();
  let user=null,d=null;
  if(SA){const sess=await window.bghq.ready;
   if(!sess){isAdmin=false;mode='db';await loadPublic();setInterval(loadPublic,45000);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')loadPublic()});return}
-  d=await window.claude.use('db');db=d;mode='db';isAdmin=true;myUid=sess.user.id;render();
+  d=await window.claude.use('db');db=d;mode='db';isAdmin=true;myUid=sess.user.id;
+  try{const rr=await window.bghq.sb.rpc('bg_my_role');ROLE=(!rr.error&&rr.data==='owner')?'owner':'admin'}catch(e){ROLE='admin'}
+  render();
   const err=e=>{dbErr='Some data could not be loaded: '+(e&&e.message||'permission');sched()};
   Object.keys(D).filter(c=>c!=='requests').forEach(c=>d.collection(cpath(c)).onSnapshot(s=>{D[c]=plainDocs(s);if(c==='slots')ready=true;reindex();sched()},err));
   d.collection('inbox').onSnapshot(s=>{D.requests=plainDocs(s);sched()},err);
