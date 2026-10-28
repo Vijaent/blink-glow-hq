@@ -166,6 +166,27 @@ code.link{display:block;overflow-wrap:anywhere;background:var(--soft);border:1px
   .tabs{flex-wrap:wrap;overflow:visible;gap:0}
   .tabs button{padding:8px 11px}
 }
+
+.aapp{min-height:100vh;display:flex;flex-direction:column;background:var(--bg)}
+.ahead{display:flex;align-items:center;gap:10px;padding:12px 20px;padding-top:calc(12px + env(safe-area-inset-top,0px));background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.atabs{display:flex;gap:2px;padding:0 14px;background:var(--surface);border-bottom:1px solid var(--line);overflow-x:auto;position:sticky;top:57px;z-index:19}
+.atabs button{display:flex;align-items:center;gap:8px;background:none;border:0;border-bottom:3px solid transparent;padding:12px 14px;color:var(--mute);font-weight:500;cursor:pointer;white-space:nowrap}
+.atabs button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.atabs button[aria-current="page"]{color:var(--green);border-bottom-color:var(--green);font-weight:600}
+.amain{width:100%;max-width:1100px;margin:0 auto;padding:22px 20px 40px;display:flex;flex-direction:column;gap:14px}
+.amain h1{margin:0}
+.bigacts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.bigacts .btn{padding:16px 12px;font-size:15px}
+@media (max-width:700px){
+  .atabs{position:fixed;top:auto;bottom:0;left:0;right:0;justify-content:space-around;padding:0 4px calc(4px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);border-bottom:0;z-index:30;overflow:visible;gap:0}
+  .atabs button{flex-direction:column;gap:2px;padding:8px 4px;font-size:11px;border-bottom:0;border-top:3px solid transparent;flex:1;min-width:0}
+  .atabs button[aria-current="page"]{border-top-color:var(--green)}
+  .amain{padding:16px 14px 96px}
+  .ahead{padding:10px 14px}
+  .ahead .logo b{white-space:nowrap;font-size:16px}
+  .ahead .btn:not(:last-child){display:none}
+  .bigacts{grid-template-columns:1fr 1fr}
+}
 </style>
 
 </head>
@@ -3328,9 +3349,10 @@ function viewOverviewAdmin(){const w=h('div',{class:'wrap'}),t=todayStr();
  const todays=D.appts.filter(a=>a.date===t&&live(a)).sort((a,b)=>a.start-b.start);
  const up=D.appts.filter(a=>a.date>t&&['Pending confirmation','Confirmed','Rescheduled'].includes(a.status)).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:a.start-b.start).slice(0,8);
  const reqs=D.requests.filter(r=>r.status==='New'),fus=D.followups.filter(f=>f.status!=='Done'&&f.due<=t);
+ w.appendChild(h('div',{class:'bigacts'},[['New booking',()=>bookingForm()],['New client',()=>contactForm()],['New sale',()=>saleForm()],['Record payment',()=>payForm()],['Adjust stock',()=>D.products.length?moveForm():toast('The owner has not added products yet',true)]].map(a=>h('button',{class:'btn',type:'button',text:a[0],onclick:a[1]}))));
  w.appendChild(h('div',{class:'grid'},[tile('Appointments today',num(todays.length),fdy(t)),tile('Requests to confirm',num(reqs.length),reqs.length?'Open Bookings, then Requests':'None waiting',reqs.length?['warn','Action']:null),tile('Follow-ups due',num(fus.length),fus.length?'Open Clients, then Follow-ups':'All caught up',fus.length?['warn','Action']:null),tile('Unpaid sales',num(outstanding().length),'sales with a balance')]));
  const row=a=>{const r=[fd(a.date)+' '+mstr(a.start),cName(a.contactId),(IDX.service[a.serviceId]||{}).name||'—',a.staff||'—',pill(a.status,a.status==='Pending confirmation'?'warn':'green')];r.onclick=()=>{tab='bookings';render()};return r};
- w.appendChild(card('Today','Appointments on today’s diary.',tbl(['When','Client','Service','Stylist','Status'],todays.map(row),{empty:emptyBox('Nothing booked today','Use Quick add to add a booking.')})));
+ w.appendChild(card('Today’s diary','Appointments booked for today.',tbl(['When','Client','Service','Stylist','Status'],todays.map(row),{empty:emptyBox('Nothing booked today','Press New booking above to add one.')})));
  w.appendChild(card('Coming up',null,tbl(['When','Client','Service','Stylist','Status'],up.map(row),{empty:emptyBox('No upcoming appointments','')})));
  return w}
 
@@ -3583,6 +3605,20 @@ function installHelp(){const ios=/iphone|ipad|ipod/i.test(navigator.userAgent||'
   ios?h('p',{class:'hint',text:'On iPhone this only works from Safari, not from inside another app.'}):null]))}
 function installBtn(){if(!SA||isStandalone())return null;
  return h('button',{class:'btn ghost sm',type:'button',style:'margin-top:8px',text:'Install on phone',onclick:async()=>{if(deferredInstall){const p=deferredInstall;deferredInstall=null;try{await p.prompt()}catch(e){}sched()}else installHelp()}})}
+
+/* ================= Admin shell: a separate, simple front-desk app ================= */
+const ADMIN_TABS_UI=[['overview','Today','M3 12l9-8 9 8M5 10v10h14V10'],['bookings','Bookings','M4 6h16v14H4zM4 10h16M8 3v4M16 3v4'],['clients','Clients','M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 4-6 8-6s8 2 8 6'],['sales','Sales','M4 20V10M10 20V4M16 20v-8M22 20H2'],['stock','Stock','M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8'],['services','Prices','M12 3l9 9-9 9-9-9zM12 8v8M9.5 10.5c0-1 1-1.5 2.5-1.5s2.5.5 2.5 1.5-1 1.5-2.5 1.5-2.5.5-2.5 1.5 1 1.5 2.5 1.5 2.5-.5 2.5-1.5']];
+function adminShell(){
+ const t=ADMIN_TABS_UI.find(x=>x[0]===tab)||ADMIN_TABS_UI[0];
+ const ic=p=>{const s=h('span',{style:'display:flex'});s.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+p+'"/></svg>';return s};
+ const go=k=>()=>{tab=k;try{localStorage.setItem('bnghub-tab',tab)}catch(e){}render();scrollTo(0,0)};
+ const head=h('header',{class:'ahead'},[h('div',{class:'logo',style:'padding:0'},[h('i',{text:'B'}),h('b',{text:S.biz})]),h('span',{class:'grow'}),pill('Admin','good'),installBtn(),h('button',{class:'btn ghost sm',type:'button',text:'Sign out',onclick:()=>window.bghq.signOut()})]);
+ const tabs=h('nav',{class:'atabs','aria-label':'Sections'},ADMIN_TABS_UI.map(x=>h('button',{type:'button','aria-current':tab===x[0]?'page':null,onclick:go(x[0])},[ic(x[2]),h('span',{text:x[1]})])));
+ const main=h('main',{class:'amain'},[h('h1',{text:t[1]})]);
+ if(dbErr)main.appendChild(h('div',{class:'banner',style:'margin-bottom:16px'},[h('p',{text:dbErr})]));
+ try{main.appendChild(VIEWS[tab]())}catch(e){main.appendChild(h('div',{class:'card'},[h('h2',{text:'Something went wrong on this page'}),h('p',{class:'err',text:String(e&&e.message||e)}),h('p',{class:'hint',text:'Your records are safe. Try another page and come back.'})]));console.error(e)}
+ return h('div',{class:'aapp'},[head,tabs,main])}
+
 function isPublicView(){return (!isAdmin)||/^#book/.test(location.hash||'')}
 function render(){const root=$('#root');if(!root)return;
  const a=document.activeElement,fid=a&&a.id,ss=a&&a.selectionStart,se=a&&a.selectionEnd;
@@ -3593,6 +3629,8 @@ function render(){const root=$('#root');if(!root)return;
  if(SA&&ROLE==='none'){root.appendChild(noAccessView());return}
  dataList();
  if(!isOwner()&&!ADMIN_TABS.includes(tab))tab='overview';
+ if(!isOwner()&&SA){root.appendChild(adminShell());
+  if(fid){const n=document.getElementById(fid);if(n&&n!==document.activeElement){n.focus();try{if(ss!=null&&n.setSelectionRange)n.setSelectionRange(ss,se)}catch(e){}}}return}
  const app=h('div',{class:'app'+(minimised?' min':'')+(sub.menu?' open':'')});
  const side=h('aside',{class:'side','aria-label':'Main navigation'},[h('div',{class:'logo'},[h('i',{text:'B'}),h('b',{text:S.biz})]),
   h('nav',{class:'nav'},NAV.filter(n=>(n[0]!=='users'||SA)&&(isOwner()||ADMIN_TABS.includes(n[0]))).map(n=>h('button',{type:'button','aria-current':tab===n[0]?'page':null,onclick:()=>{tab=n[0];sub.menu=false;try{localStorage.setItem('bnghub-tab',tab)}catch(e){}render();scrollTo(0,0)}},[(()=>{const ic=h('span',{style:'display:flex'});ic.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+n[2]+'"/></svg>';return ic})(),h('span',{text:n[1]})]))),
