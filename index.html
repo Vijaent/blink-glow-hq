@@ -2601,7 +2601,7 @@ var qrcode = function() {
 (function(){
 'use strict';
 /* ================= configuration ================= */
-const DEF={biz:'Blink & Glow HQ',tz:'Africa/Nairobi',target:350000,studioPhone:'',mpesaNote:'',
+const DEF={biz:'Blink & Glow HQ',tz:'Africa/Nairobi',target:350000,studioPhone:'',studioAddr:'Empire Square, Kiambu Road, Nairobi',mpesaNote:'',
  hours:{0:null,1:{o:'09:00',c:'20:00'},2:{o:'09:00',c:'20:00'},3:{o:'09:00',c:'20:00'},4:{o:'09:00',c:'20:00'},5:{o:'09:00',c:'20:00'},6:{o:'09:00',c:'20:00'}},
  breaks:[],blocks:[],defDur:180,buffer:15,step:30,notice:12,cancelHrs:24,reschedHrs:12,
  cancelRule:'Deposits are kept when a booking is cancelled with less than the notice above.',
@@ -2956,7 +2956,7 @@ function profile(id){const c=IDX.contact[id];if(!c)return;const x=IDX.cs[id]||{v
   h('div',{class:'row'},[pill(life(c),'green'),c.source?pill('Source: '+c.source):pill('Source not recorded','warn'),c.birthday?pill('Birthday '+c.birthday):null]),
   h('div',{class:'grid'},[tile('Phone',c.phone||'—',c.wa&&c.wa!==c.phone?'WhatsApp '+c.wa:''),tile('Completed visits',String(Math.max(d.n,x.visits)),d.last?'Last '+fdy(d.last):'None yet'),tile('Total spend',money(x.spend),x.first?'First purchase '+fdy(x.first):'No purchase yet')]),
   c.notes?h('p',{style:'margin:0',text:c.notes}):null,
-  h('div',{class:'row'},[h('button',{class:'btn',type:'button',text:'WhatsApp',onclick:()=>{closeModal();waPick(c)}}),h('button',{class:'btn ghost',type:'button',text:'Edit',onclick:()=>{closeModal();contactForm(c)}}),h('button',{class:'btn ghost',type:'button',text:'Book',onclick:()=>{closeModal();bookingForm({who:c.name})}}),h('button',{class:'btn ghost',type:'button',text:'New sale',onclick:()=>{closeModal();saleForm({who:c.name})}}),h('button',{class:'btn ghost',type:'button',text:'Add follow-up',onclick:()=>{closeModal();fuForm(c.id)}})]),
+  h('div',{class:'row'},[h('button',{class:'btn',type:'button',text:'WhatsApp',onclick:()=>{closeModal();waPick(c)}}),h('button',{class:'btn ghost',type:'button',text:'Edit',onclick:()=>{closeModal();contactForm(c)}}),h('button',{class:'btn ghost',type:'button',text:'Receipts',onclick:()=>{const ps=rcptOrder().filter(p=>{const s=D.sales.find(z=>z.id===p.saleId);return s&&s.contactId===id});if(!ps.length){toast('No payments yet',true);return}closeModal();modal('Receipts · '+c.name,h('div',{style:'display:flex;flex-direction:column;gap:8px'},ps.map(p=>h('button',{class:'btn ghost',type:'button',text:rcptNo(p)+' · '+fdy(p.date)+' · '+money(p.amount)+' · '+rcptData(p).kind,onclick:()=>receiptModal(p)}))))}}),h('button',{class:'btn ghost',type:'button',text:'Book',onclick:()=>{closeModal();bookingForm({who:c.name})}}),h('button',{class:'btn ghost',type:'button',text:'New sale',onclick:()=>{closeModal();saleForm({who:c.name})}}),h('button',{class:'btn ghost',type:'button',text:'Add follow-up',onclick:()=>{closeModal();fuForm(c.id)}})]),
   h('h3',{text:'History'}),tbl(['Date','Type','Detail'],ev.map(e=>[fdy(e[0]),e[1],e[2]]),{empty:emptyBox('No history yet','Inquiries, bookings, sales and messages appear here.')})]);
  modal(c.name,body,true)}
 function followTable(list){return tbl(['Due','Client','For','Status','Assigned',''],list.map(f=>{const c=IDX.contact[f.contactId];return [fdy(f.due),c?c.name:'?',TPL_LABEL[f.type],pill(fuState(f),fuState(f)==='Overdue'?'bad':fuState(f)==='Due today'?'warn':''),f.assigned||'—',h('span',{class:'act'},[h('button',{class:'btn sm',text:'WhatsApp',onclick:()=>waPick(c)}),' ',h('button',{class:'btn ghost sm',text:'Done',onclick:()=>fuDone(f)})])]}),{empty:emptyBox('No follow-ups in this list','Log an inquiry and a follow-up is scheduled for you.')})}
@@ -3015,7 +3015,7 @@ function bookingForm(pre){pre=pre||{};let A=null;
    const a={id:uid(),contactId:cid,serviceId:v.service,staff:staff,date:v.date,start:start,dur:dur,price:v.price,deposit:v.deposit,status:v.status,source:v.source,notes:v.notes,createdBy:'dashboard'};
    const sv=IDX.service[v.service];
    if(v.deposit>0||v.price>0){const sid=uid();a.saleId=sid;await put('sales',{id:sid,no:nextSaleNo(),date:v.date,contactId:cid,lines:[{kind:'service',refId:v.service,name:sv?sv.name:'Appointment',qty:1,unit:rd(v.price)}],discount:0,refund:0,adj:[],channel:'',pending:true,apptId:a.id,notes:''});
-    if(v.deposit>0)await put('payments',{date:todayStr(),amount:rd(v.deposit),method:v.method,accountId:v.acct,saleId:sid,ref:'',notes:'Booking deposit'})}
+    if(v.deposit>0)offerReceipt(await put('payments',{date:todayStr(),amount:rd(v.deposit),method:v.method,accountId:v.acct,saleId:sid,ref:'',notes:'Booking deposit',rno:nextRcptNo()}))}
    await put('appts',a);syncSlot(a);audit('Booking created',cName(cid)+' '+v.date+' '+v.time);
    if(v.deposit<=0)toast('Saved without a deposit. Chase it before the day.')}})}
 function setStatus(a,st){if(st==='Cancelled'||st==='No-show')return cancelFlow(a,st);if(st==='Completed')return completeFlow(a);
@@ -3038,7 +3038,7 @@ function completeFlow(a){const sv=IDX.service[a.serviceId],s=a.saleId&&D.sales.f
    const lines=[{kind:'service',refId:a.serviceId,name:sv?sv.name:'Service',qty:1,unit:rd(v.price)}];let sid=a.saleId;
    if(s)await patch('sales',s.id,{lines:lines,discount:rd(v.discount),pending:false,channel:v.channel,date:a.date});
    else{sid=uid();await put('sales',{id:sid,no:nextSaleNo(),date:a.date,contactId:a.contactId,lines:lines,discount:rd(v.discount),refund:0,adj:[],channel:v.channel,pending:false,apptId:a.id,notes:''})}
-   if(v.pay>0)await put('payments',{date:todayStr(),amount:rd(v.pay),method:v.method,accountId:v.acct,saleId:sid,ref:'',notes:''});
+   if(v.pay>0)offerReceipt(await put('payments',{date:todayStr(),amount:rd(v.pay),method:v.method,accountId:v.acct,saleId:sid,ref:'',notes:'',rno:nextRcptNo()}));
    if(v.use&&sv&&!a.consumed){for(const r of sv.recipe||[]){const p=IDX.product[r.productId];if(p)await put('moves',{date:a.date,productId:p.id,type:'Consumption',qty:-r.qty,unitCost:prodAvg(p),note:(sv.name)+' for '+cName(a.contactId),apptId:a.id})}}
    await patch('appts',a.id,{status:'Completed',saleId:sid,consumed:!!v.use});syncSlot(Object.assign({},a,{status:'Completed'}));
    await patch('contacts',a.contactId,{lastContact:a.date});audit('Appointment completed',cName(a.contactId)+' '+a.date)}})}
@@ -3148,7 +3148,7 @@ function saleForm(pre){pre=pre||{};let ack=false;
    if(lastSale.key===key&&Date.now()-lastSale.at<45000&&!ack){ack=true;return 'This looks the same as the sale you just saved. Press again only if it is a different sale.'}
    const sid=uid();await put('sales',{id:sid,no:nextSaleNo(),date:v.date,contactId:cid,lines:L,discount:rd(v.discount),refund:0,adj:[],channel:v.channel,campaignId:v.campaignId,notes:v.notes});lastSale={key:key,at:Date.now()};
    for(const l of L)if(l.kind==='product'){const p=IDX.product[l.refId];if(p)await put('moves',{date:v.date,productId:p.id,type:'Sale',qty:-l.qty,unitCost:prodAvg(p),note:'Sold to '+(cid?cName(cid):'walk-in'),saleId:sid})}
-   if(v.pay>0)await put('payments',{date:v.date,amount:rd(v.pay),method:v.method,accountId:v.acct,saleId:sid,ref:v.ref,notes:''});
+   if(v.pay>0)offerReceipt(await put('payments',{date:v.date,amount:rd(v.pay),method:v.method,accountId:v.acct,saleId:sid,ref:v.ref,notes:'',rno:nextRcptNo()}));
    if(cid){const c=IDX.contact[cid];if(c)await patch('contacts',cid,{lastContact:v.date,stage:'Booked'})}audit('Sale recorded',nextSaleNo())}})}
 function payForm(sale){let ack=false;const open=D.sales.filter(s=>isSale(s)&&saleBal(s)>0||s.pending);
  openForm({title:'Record payment',cta:'Record payment',done:'Payment recorded',fields:[
@@ -3159,7 +3159,7 @@ function payForm(sale){let ack=false;const open=D.sales.filter(s=>isSale(s)&&sal
    if(v.ref&&D.payments.some(p=>p.ref&&p.ref.toLowerCase()===v.ref.trim().toLowerCase()))return 'A payment with this reference is already recorded. It was not saved again.';
    if(D.payments.some(p=>p.saleId===v.sale&&p.amount===rd(v.amount)&&p.method===v.method&&p.date===v.date&&Date.now()-(p.ts||0)<60000))return 'The same payment was recorded a moment ago. It was not saved again.';
    const s=D.sales.find(x=>x.id===v.sale);if(s&&!s.pending&&v.amount>saleBal(s)&&!ack){ack=true;return 'This is more than the '+money(saleBal(s))+' still owed. Press again to record it as a credit.'}
-   await put('payments',{date:v.date,amount:rd(v.amount),method:v.method,accountId:v.acct,saleId:v.sale,ref:v.ref.trim(),notes:v.notes})}})}
+   offerReceipt(await put('payments',{date:v.date,amount:rd(v.amount),method:v.method,accountId:v.acct,saleId:v.sale,ref:v.ref.trim(),notes:v.notes,rno:nextRcptNo()}))}})}
 function adjForm(s){openForm({title:'Adjust '+s.no,cta:'Add adjustment',done:'Adjustment recorded',note:'Sales are never edited in place. An adjustment keeps the history. Current total '+money(saleNet(s))+', paid '+money(salePaid(s))+'.',fields:[
   {k:'type',l:'Type',t:'sel',o:['Discount','Refund','Correction (increase)'],full:true},{k:'amount',l:'Amount (KSh)',t:'num',req:true},{k:'reason',l:'Reason',req:true,full:true},{k:'payout',l:'Money returned to the client now',t:'chk'},{k:'acct',l:'Paid out from',t:'sel',o:acctOpts(),v:defAcct('M-Pesa')}],
   submit:async v=>{const sign=v.type==='Correction (increase)'?-1:1;if(sign===1&&v.amount>saleNet(s))return 'That is more than the sale total.';
@@ -3173,7 +3173,7 @@ function viewSales(){const w=h('div',{class:'wrap'}),R=range(PER.k,PER.a,PER.b),
  w.appendChild(!isOwner()?document.createDocumentFragment():h('div',{class:'grid'},[tile('Sales',money(sum(valid,saleNet)),R.label+' · '+valid.length+' sales'),tile('Money collected',money(sum(D.payments.filter(p=>inR(p.date,R.a,R.b)),p=>p.amount)),'payments received'),tile('Still owed',money(sum(outstanding(),saleBal)),outstanding().length+' sales, all time',outstanding().length?['warn','Chase']:['good','Clear']),tile('Average sale',valid.length?money(sum(valid,saleNet)/valid.length):'n/a','')]));
  let list=inP.filter(s=>(fs==='all'||saleStatus(s)===fs)&&(!q||(s.no+' '+cName(s.contactId)).toLowerCase().includes(q)));
  w.appendChild(tbl(['Sale','Date','Client','Items','#Total','#Paid','#Owed','Status','Channel',''],list.map(s=>[s.no,fd(s.date),cName(s.contactId),(s.lines||[]).map(l=>l.name||'Item').join(', '),money(saleNet(s)),money(salePaid(s)),s.void?'—':money(Math.max(0,saleBal(s))),pill(saleStatus(s),{Paid:'good',Unpaid:'bad','Part paid':'warn',Void:'',Booked:'green',Overpaid:'warn'}[saleStatus(s)]),s.channel||'—',
-  h('span',{class:'act'},s.void?[]:[saleBal(s)>0||s.pending?h('button',{class:'btn sm',text:'Payment',onclick:()=>payForm(s)}):null,' ',saleBal(s)>0&&!s.pending&&IDX.contact[s.contactId]?h('button',{class:'btn ghost sm',text:'Remind',onclick:()=>waModal(s.contactId,'payment',{amount:money(saleBal(s)),service:(s.lines[0]||{}).name||'your visit'})}):null,' ',canDo('sales')?h('button',{class:'btn ghost sm',text:'Adjust',onclick:()=>adjForm(s)}):null,' ',canDo('sales')?h('button',{class:'btn danger sm',text:'Void',onclick:()=>voidSale(s)}):null])]),
+  h('span',{class:'act'},s.void?[]:[salePaid(s)>0?h('button',{class:'btn ghost sm',text:'Receipt',onclick:()=>salesReceipts(s)}):null,' ',saleBal(s)>0||s.pending?h('button',{class:'btn sm',text:'Payment',onclick:()=>payForm(s)}):null,' ',saleBal(s)>0&&!s.pending&&IDX.contact[s.contactId]?h('button',{class:'btn ghost sm',text:'Remind',onclick:()=>waModal(s.contactId,'payment',{amount:money(saleBal(s)),service:(s.lines[0]||{}).name||'your visit'})}):null,' ',canDo('sales')?h('button',{class:'btn ghost sm',text:'Adjust',onclick:()=>adjForm(s)}):null,' ',canDo('sales')?h('button',{class:'btn danger sm',text:'Void',onclick:()=>voidSale(s)}):null])]),
   {empty:emptyBox('No sales in this period','Record a sale, or complete a booking and the sale is created for you.',h('button',{class:'btn',text:'New sale',onclick:()=>saleForm()}))}));
  w.appendChild(h('p',{class:'hint',text:'Total counts the sale once. Payments, even several, never add to sales. “Booked” sales are deposits for future appointments and count as sales only after completion.'}));return w}
 function periodSel(){const s=h('select',{id:'s-per','aria-label':'Period',style:'width:auto',onchange:e=>{PER.k=e.target.value;render()}},[['month','This month'],['last','Last month'],['quarter','This quarter'],['ytd','Year to date'],['30','Last 30 days'],['custom','Custom range']].map(o=>h('option',{value:o[0],text:o[1]})));s.value=PER.k;
@@ -3236,6 +3236,59 @@ function viewMoney(){const w=h('div',{class:'wrap'}),k=sub.money||'inc',R=range(
  if(k==='rec'){const as=D.accounts.filter(a=>!a.archived);w.appendChild(card('Reconciliation','Compare what your records say with what the account actually shows. These balances come from your entries. Nothing here is read from M-Pesa or a bank.',
   tbl(['Account','#Recorded','#Last actual','#Difference','Last checked','Status',''],as.map(a=>{const l=(a.recon||[]).slice(-1)[0],rec=accBal(a),stale=!l||daysBetween(l.date,todayStr())>7,diff=l?l.actual-rec:NaN;return [a.name,money(rec),l?money(l.actual):'—',l?money(diff):'—',l?fd(l.date):'Never',pill(!l?'Not checked':diff===0?'Matches':'Difference '+money(Math.abs(diff)),!l?'warn':diff===0?'good':'bad'),h('button',{class:'btn sm',text:'Check now',onclick:()=>reconForm(a)})]}),{empty:emptyBox('No accounts yet','Add accounts in the Accounts tab first.')})))}
  return w}
+
+/* ---- receipts: generated from the payment, never typed twice ---- */
+const hx=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function rcptOrder(){return D.payments.filter(p=>p.amount>0).slice().sort((a,b)=>((a.ts||0)-(b.ts||0))||(a.id<b.id?-1:1))}
+function rcptNo(p){if(p.rno)return p.rno;const i=rcptOrder().findIndex(x=>x.id===p.id);return 'RC-'+String((i<0?rcptOrder().length:i)+1).padStart(4,'0')}
+function nextRcptNo(){const n=Math.max(0,...D.payments.map(p=>+(String(p.rno||'').replace(/\D/g,''))||0),rcptOrder().length);return 'RC-'+String(n+1).padStart(4,'0')}
+function rcptData(p){const s=D.sales.find(x=>x.id===p.saleId),c=s&&IDX.contact[s.contactId],a=s&&D.appts.find(x=>x.id===s.apptId||x.saleId===s.id);
+ const prior=s?D.payments.filter(x=>x.saleId===s.id&&x.id!==p.id&&x.amount>0&&(((x.ts||0)<(p.ts||0))||((x.ts||0)===(p.ts||0)&&x.id<p.id))):[];
+ const before=sum(prior,x=>x.amount),total=s?saleNet(s):0,after=before+p.amount,bal=s?total-after:0;
+ let kind='Payment receipt',stamp='PAYMENT RECEIVED';
+ if(s){if(total>0&&bal<=0){kind='Full payment receipt';stamp='PAID IN FULL'}else if(!prior.length){kind='Deposit receipt';stamp='DEPOSIT RECEIVED'}else{kind='Part payment receipt';stamp='PART PAYMENT RECEIVED'}}
+ return {p:p,s:s,c:c,a:a,prior:prior,before:before,total:total,bal:Math.max(0,bal),kind:kind,stamp:stamp,no:rcptNo(p)}}
+function rcptHtml(p){const r=rcptData(p),s=r.s,biz=(typeof pubBiz==='function'?pubBiz():S.biz),G='#328566',lines=s?(s.lines||[]):[];
+ const row=(l,v,b)=>'<tr><td'+(b?' class="b"':'')+'>'+l+'</td><td class="r'+(b?' b':'')+'">'+v+'</td></tr>';
+ const sv=lines.map(l=>'<tr><td>'+hx(l.name||'Item')+(l.qty>1?' × '+l.qty:'')+'</td><td class="r">'+hx(money((l.qty||1)*(l.unit||0)))+'</td></tr>').join('');
+ const appt=r.a?'<p class="m">Appointment: <b>'+hx(fdy(r.a.date))+' at '+hx(mstr(r.a.start))+'</b>'+(r.a.staff?' · with '+hx(r.a.staff):'')+'</p>':'';
+ const sums=s?(r.total>0?row('Total',hx(money(sum(lines,l=>l.qty*l.unit))))+(s.discount?row('Discount','− '+hx(money(s.discount))):'')+((s.adj||[]).length?row('Adjustments','− '+hx(money(sum(s.adj,x=>x.amount)))):''):''):'';
+ const prev=r.before>0?row('Paid before',hx(money(r.before))):'';
+ const balRow=s&&r.total>0?row('Balance remaining',hx(money(r.bal)),true):'';
+ return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+hx(r.no)+'</title><style>'
+ +'*{box-sizing:border-box}body{margin:0;background:#fff;color:#26292A;font:14px/1.5 Georgia,"Times New Roman",serif;padding:28px 26px}'
+ +'.top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2px solid '+G+';padding-bottom:14px}'
+ +'.lg{display:flex;gap:10px;align-items:center}.lg i{width:38px;height:38px;border-radius:50%;background:'+G+';color:#fff;font:700 20px Georgia,serif;font-style:normal;display:flex;align-items:center;justify-content:center}'
+ +'.lg b{font-size:19px;letter-spacing:.3px}.sm{font:12px/1.5 Arial,sans-serif;color:#667068}h1{margin:0;font:600 12px Arial,sans-serif;letter-spacing:2px;text-transform:uppercase;color:'+G+';text-align:right}'
+ +'.no{font:700 16px Arial,sans-serif;text-align:right}.m{margin:6px 0;font:13px/1.5 Arial,sans-serif}table{width:100%;border-collapse:collapse;margin:12px 0;font:13.5px Arial,sans-serif}'
+ +'td{padding:7px 0;border-bottom:1px solid #E8E2D0}td.r{text-align:right;white-space:nowrap}td.b{font-weight:700}'
+ +'.paid{background:#E3F1EA;border:1px solid '+G+';border-radius:8px;padding:12px 14px;margin:14px 0;display:flex;justify-content:space-between;align-items:center;font:14px Arial,sans-serif}'
+ +'.paid b{font-size:22px;color:#1f5f47}.stamp{display:inline-block;border:2px solid '+G+';color:'+G+';font:700 12px Arial,sans-serif;letter-spacing:2px;padding:4px 10px;border-radius:4px;transform:rotate(-3deg);margin-top:4px}'
+ +'.fn{margin-top:18px;border-top:1px solid #E8E2D0;padding-top:12px;font:11.5px/1.6 Arial,sans-serif;color:#667068}.ty{font:italic 15px Georgia,serif;color:'+G+';margin:16px 0 4px}'
+ +'@media print{body{padding:0}@page{margin:16mm}}</style></head><body>'
+ +'<div class="top"><div class="lg"><i>B</i><div><b>'+hx(biz)+'</b><div class="sm">'+hx(S.studioAddr||'')+(S.studioPhone?'<br>WhatsApp '+hx(S.studioPhone):'')+'</div></div></div>'
+ +'<div><h1>'+hx(r.kind)+'</h1><div class="no">'+hx(r.no)+'</div><div class="sm" style="text-align:right">'+hx(fdy(r.p.date))+'</div></div></div>'
+ +'<p class="m" style="margin-top:14px">Received from <b>'+hx(r.c?r.c.name:'Walk-in client')+'</b>'+(r.c&&r.c.phone?' · '+hx(r.c.phone):'')+'</p>'+appt
+ +(sv?'<table>'+sv+sums+'</table>':'')
+ +'<div class="paid"><div>Amount received<br><span class="stamp">'+hx(r.stamp)+'</span></div><b>'+hx(money(r.p.amount))+'</b></div>'
+ +'<table>'+row('Paid by',hx(r.p.method||'')+(r.p.ref?' · ref '+hx(r.p.ref):''))+prev+balRow+'</table>'
+ +(r.kind==='Deposit receipt'&&S.cancelRule?'<div class="fn">'+hx(S.cancelRule)+'</div>':'')
+ +'<div class="ty">Thank you for choosing '+hx(biz)+'.</div><div class="fn">This receipt was generated by '+hx(biz)+' and is valid without a signature.'+(r.s?' Sale '+hx(r.s.no)+'.':'')+'</div></body></html>'}
+function printHtml(html){const f=document.createElement('iframe');f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';f.srcdoc=html;f.onload=()=>{try{f.contentWindow.focus();f.contentWindow.print()}catch(e){toast('Printing is not available here',true)}setTimeout(()=>f.remove(),60000)};document.body.appendChild(f)}
+function rcptText(r){const biz=(typeof pubBiz==='function'?pubBiz():S.biz);return 'Hi '+(r.c?r.c.name.split(' ')[0]:'')+', thank you! Receipt '+r.no+' from '+biz+': '+money(r.p.amount)+' received by '+(r.p.method||'payment')+' on '+fdy(r.p.date)+'. '+(r.s&&r.total>0?(r.bal>0?'Balance remaining: '+money(r.bal)+'.':'Paid in full.'):'')}
+function receiptModal(pid){const p=typeof pid==='object'?pid:D.payments.find(x=>x.id===pid);if(!p){toast('Receipt not found',true);return}
+ const r=rcptData(p),html=rcptHtml(p),fr=h('iframe',{class:'rcptfr',title:'Receipt '+r.no,srcdoc:html,style:'width:100%;height:min(62vh,520px);border:1px solid var(--line);border-radius:8px;background:#fff'});
+ const wa=r.c&&waUrl(r.c.wa||r.c.phone,rcptText(r));
+ const body=h('div',{style:'display:flex;flex-direction:column;gap:12px'},[fr,h('div',{class:'row'},[
+  h('button',{class:'btn',type:'button',text:'Print / Save as PDF',onclick:()=>printHtml(html)}),
+  wa?h('button',{class:'btn ghost',type:'button',text:'WhatsApp the client',onclick:()=>{window.open(wa,'_blank','noopener');if(r.c)put('msglog',{date:todayStr(),contactId:r.c.id,kind:'Receipt link opened',tpl:'receipt'});toast('WhatsApp opened. Press send there.')}}):null,
+  h('button',{class:'btn ghost',type:'button',text:'Copy text',onclick:()=>{const t=rcptText(r);(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('Copied'),()=>toast('Copy is not available here',true))}})]),
+  h('p',{class:'hint',style:'margin:0',text:'Made from the payment already recorded. Nothing to type again. WhatsApp opens a chat with the message ready; you press send.'})]);
+ modal(r.kind+' · '+r.no,body,true)}
+function offerReceipt(pid){setTimeout(()=>{const p=D.payments.find(x=>x.id===pid);if(!p)return;const body=h('div',{class:'row'},[h('button',{class:'btn',type:'button',text:'View receipt',onclick:()=>receiptModal(p)}),h('button',{class:'btn ghost',type:'button',text:'Not now',onclick:closeModal})]);modal('Receipt ready',h('div',{style:'display:flex;flex-direction:column;gap:12px'},[h('p',{style:'margin:0',text:money(p.amount)+' recorded. The '+rcptData(p).kind.toLowerCase()+' is ready.'}),body]))},350)}
+
+function salesReceipts(s){const ps=rcptOrder().filter(p=>p.saleId===s.id);if(!ps.length){toast('No payments yet',true);return}if(ps.length===1){receiptModal(ps[0]);return}
+ modal('Receipts for '+s.no,h('div',{style:'display:flex;flex-direction:column;gap:8px'},ps.map(p=>h('button',{class:'btn ghost',type:'button',text:rcptNo(p)+' · '+fdy(p.date)+' · '+money(p.amount)+' · '+rcptData(p).kind,onclick:()=>receiptModal(p)}))))}
 
 /* ================= Stock, services, marketing ================= */
 function productForm(p){const e=!!p;p=p||{};openForm({title:e?'Edit product':'New product',done:'Product saved',fields:[
@@ -3486,7 +3539,7 @@ function viewUsers(){const w=h('div',{class:'wrap'});
 function viewSettings(){const w=h('div',{class:'wrap'}),F={};
  const inp=(k,l,v,t,hint)=>{const e=h(t==='ta'?'textarea':'input',{id:'st-'+k,type:t==='ta'?null:(t||'text'),oninput:()=>{w.setAttribute('data-dirty','1')}});e.value=v==null?'':v;F[k]=e;return h('label',{class:t==='ta'?'full':''},[l,e,hint?h('small',{text:hint}):null])};
  const cardF=(t,h2,kids)=>card(t,h2,h('div',{class:'fgrid'},kids));
- w.appendChild(cardF('Business','',[inp('biz','Business name',S.biz),inp('studioPhone','Studio WhatsApp number',S.studioPhone,'tel','Used for booking confirmations. Format 0712 345 678 or +254…'),inp('target','Monthly revenue target (KSh)',S.target,'number'),inp('bookingBase',SA?'Booking page address (fixed by the system)':'Booking link base',SA?pubBase():(S.bookingBase||''),'text',SA?'Booking links and QR codes always use this address, so they cannot be mistyped.':'Paste this page’s share link from the Share menu. Booking links are built from it.'),inp('fyStart','Financial year starts (MM-DD)',S.fyStart),inp('shortLinks','Short links (one per line: General = https://…  or  Instagram = https://…)',S.shortLinks||'','ta','Optional. Paste shortened links made in a link shortener. They replace the long links everywhere.'),h('label',{},['Time zone',(F.tz=h('select',{id:'st-tz'},[['Africa/Nairobi','Africa/Nairobi (EAT)'],['Africa/Kampala','Africa/Kampala'],['Africa/Dar_es_Salaam','Africa/Dar es Salaam'],['UTC','UTC']].map(o=>h('option',{value:o[0],text:o[1]}))))]),h('small',{text:'Currency is Kenyan shillings (KSh).'})]));
+ w.appendChild(cardF('Business','',[inp('biz','Business name',S.biz),inp('studioAddr','Studio address (shown on receipts)',S.studioAddr),inp('studioPhone','Studio WhatsApp number',S.studioPhone,'tel','Used for booking confirmations. Format 0712 345 678 or +254…'),inp('target','Monthly revenue target (KSh)',S.target,'number'),inp('bookingBase',SA?'Booking page address (fixed by the system)':'Booking link base',SA?pubBase():(S.bookingBase||''),'text',SA?'Booking links and QR codes always use this address, so they cannot be mistyped.':'Paste this page’s share link from the Share menu. Booking links are built from it.'),inp('fyStart','Financial year starts (MM-DD)',S.fyStart),inp('shortLinks','Short links (one per line: General = https://…  or  Instagram = https://…)',S.shortLinks||'','ta','Optional. Paste shortened links made in a link shortener. They replace the long links everywhere.'),h('label',{},['Time zone',(F.tz=h('select',{id:'st-tz'},[['Africa/Nairobi','Africa/Nairobi (EAT)'],['Africa/Kampala','Africa/Kampala'],['Africa/Dar_es_Salaam','Africa/Dar es Salaam'],['UTC','UTC']].map(o=>h('option',{value:o[0],text:o[1]}))))]),h('small',{text:'Currency is Kenyan shillings (KSh).'})]));
  F.tz.value=S.tz;if(SA&&F.bookingBase)F.bookingBase.disabled=true;
  const hr=[1,2,3,4,5,6,0].map(d=>{const x=S.hours[d]||{o:'',c:''};const o=h('input',{type:'time',id:'st-ho'+d,value:x.o,oninput:()=>w.setAttribute('data-dirty','1')}),c=h('input',{type:'time',id:'st-hc'+d,value:x.c,oninput:()=>w.setAttribute('data-dirty','1')});F['ho'+d]=o;F['hc'+d]=c;return h('label',{},[DAYN[d]+' open and close (empty = closed)',h('div',{class:'row',style:'flex-wrap:nowrap'},[o,c])])});
  w.appendChild(cardF('Working hours','Booking availability follows these hours. Sunday closed is an assumption to confirm.',hr));
@@ -3499,7 +3552,7 @@ function viewSettings(){const w=h('div',{class:'wrap'}),F={};
  F.noNeg.checked=!!S.noNeg;F.autoConsume.checked=!!S.autoConsume;
  const msg=h('span',{class:'msg'});
  w.appendChild(h('div',{class:'row',style:'position:sticky;bottom:12px'},[h('button',{class:'btn',text:'Save settings',onclick:async()=>{try{
-  const n=k=>Number(F[k].value)||0;S.biz=F.biz.value.trim()||'Blink & Glow HQ';S.studioPhone=F.studioPhone.value.trim();S.target=n('target')||S.target;S.bookingBase=SA?'':F.bookingBase.value.trim();S.shortLinks=F.shortLinks.value;S.fyStart=F.fyStart.value.trim()||'01-01';S.tz=F.tz.value;
+  const n=k=>Number(F[k].value)||0;S.biz=F.biz.value.trim()||'Blink & Glow HQ';S.studioPhone=F.studioPhone.value.trim();S.studioAddr=F.studioAddr.value.trim();S.target=n('target')||S.target;S.bookingBase=SA?'':F.bookingBase.value.trim();S.shortLinks=F.shortLinks.value;S.fyStart=F.fyStart.value.trim()||'01-01';S.tz=F.tz.value;
   [0,1,2,3,4,5,6].forEach(d=>{const o=F['ho'+d].value,c=F['hc'+d].value;S.hours[d]=o&&c?{o:o,c:c}:null});
   S.defDur=n('defDur')||180;S.buffer=n('buffer');S.step=n('step')||30;S.notice=n('notice');S.cancelHrs=n('cancelHrs');S.reschedHrs=n('reschedHrs');S.cancelRule=F.cancelRule.value;
   S.breaks=lines(F.breaks.value).map(l=>{const m=/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/.exec(l);return m?{from:m[1],to:m[2]}:null}).filter(Boolean);

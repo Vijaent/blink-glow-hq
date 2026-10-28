@@ -1,7 +1,7 @@
 // Browser test of the finished index.html with a fake Supabase (no network). Needs: npm i playwright; CHROMIUM_PATH optional.
 const { chromium } = require('playwright');
 const fs = require('fs');
-const INDEX = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8');
+const INDEX = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8').replace("(function(){\n'use strict';", "(function(){\n'use strict';window.__T={get:()=>({put,nextRcptNo,nextSaleNo,rcptData,rcptHtml,receiptModal,closeModal,todayStr,D})};");
 const FAKE = fs.readFileSync(__dirname + '/fake_supabase.js', 'utf8');
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (c || x === undefined ? '' : ' | ' + JSON.stringify(x))); };
@@ -170,6 +170,27 @@ const CFG = { biz: 'Blink & Glow', tz: 'Africa/Nairobi', phone: '0712345678', ho
   await ow.keyboard.press('Escape');
   await ow.click('button:has-text("Install on phone")'); await ow.waitForTimeout(200);
   ok('Install help explains iPhone, Android and computer', /Add to Home Screen/.test(await ow.textContent('#modalroot')) && /Install app/.test(await ow.textContent('#modalroot')));
+  // ---------- receipts ----------
+  for (const [who, pg] of [['owner', ow], ['admin', ad]]) {
+    const out = await pg.evaluate(async () => {
+      const T = window.__T.get(), {put,nextRcptNo,nextSaleNo,rcptData,rcptHtml,todayStr,D} = T;
+      const cid = await put('contacts', { name: 'Test <b>Client</b>', phone: '0712000111' });
+      const sid = await put('sales', { no: nextSaleNo(), date: todayStr(), contactId: cid, lines: [{ kind: 'service', name: 'Lashes', qty: 1, unit: 5000 }], discount: 0, adj: [], pending: true });
+      const p1 = await put('payments', { date: todayStr(), amount: 1500, method: 'M-Pesa', accountId: '', saleId: sid, ref: 'QWE123', rno: nextRcptNo() });
+      await new Promise(r => setTimeout(r, 5));
+      const p2 = await put('payments', { date: todayStr(), amount: 3500, method: 'Cash', accountId: '', saleId: sid, ref: '', rno: nextRcptNo() });
+      const k1 = rcptData(D.payments.find(x => x.id === p1)), k2 = rcptData(D.payments.find(x => x.id === p2));
+      const html = rcptHtml(D.payments.find(x => x.id === p1));
+      return { k1: k1.kind, k2: k2.kind, b1: k1.bal, b2: k2.bal, n1: k1.no, n2: k2.no, html };
+    });
+    ok(who + ': first payment is a Deposit receipt with balance 3500', out.k1 === 'Deposit receipt' && out.b1 === 3500, out);
+    ok(who + ': the payment that clears the balance is a Full payment receipt', out.k2 === 'Full payment receipt' && out.b2 === 0, out);
+    ok(who + ': receipt numbers are sequential and unique', out.n1 !== out.n2 && /^RC-\d{4}$/.test(out.n1), [out.n1, out.n2]);
+    ok(who + ': receipt shows amount, reference, balance, address; client name is escaped', /KSh 1,500/.test(out.html) && /QWE123/.test(out.html) && /Balance remaining/.test(out.html) && /Kiambu Road/.test(out.html) && !/<b>Client<\/b>/.test(out.html) && /&lt;b&gt;Client/.test(out.html));
+    await pg.evaluate(() => { const T = window.__T.get(); T.receiptModal(T.D.payments.find(p => p.ref === 'QWE123')); }); await pg.waitForTimeout(300);
+    ok(who + ': receipt preview opens with Print and WhatsApp buttons', !!(await pg.$('#modalroot iframe')) && !!(await pg.$('button:has-text("Print / Save as PDF")')) && !!(await pg.$('button:has-text("WhatsApp the client")')));
+    await pg.keyboard.press('Escape'); await pg.evaluate(() => window.__T.get().closeModal());
+  }
   const nx = await login('none');
   ok('A login without access sees only a waiting screen, no menu and no data', /Waiting for access/.test(await nx.textContent('body')) && !(await nx.$('.nav')) && !/Wanjiru/.test(await nx.evaluate(() => document.body.innerText)));
   ok('The waiting screen offers Check again and Sign out', !!(await nx.$('button:has-text("Check again")')) && !!(await nx.$('button:has-text("Sign out")')));
