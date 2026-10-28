@@ -61,8 +61,8 @@ create trigger slots_guard before insert or update on public.records
 --   admin : day-to-day work only (clients, bookings, sales and payments entry, stock movements).
 --           Cannot read or write expenses, accounts, transfers, obligations, content, campaigns or
 --           the audit trail, cannot change settings or services, and cannot void, refund or adjust a sale.
--- Anyone signed in who is not listed in team_roles is an admin. Sign-ups are switched off, so only
--- people created in Supabase can sign in at all.
+-- Anyone signed in who is not listed in team_roles has NO access until an owner permits them on the
+-- Users page. Sign-ups are switched off, so only people created in Supabase can sign in at all.
 -- ---------------------------------------------------------------------------------------------
 create table if not exists public.team_roles (
   user_id    uuid primary key references auth.users(id) on delete cascade,
@@ -76,7 +76,7 @@ revoke all on public.team_roles from anon, authenticated;
 create or replace function public.bg_role() returns text
 language sql stable security definer set search_path = public as $$
   select case when auth.uid() is null then null
-              else coalesce((select t.role from public.team_roles t where t.user_id = auth.uid()), 'admin') end
+              else coalesce((select t.role from public.team_roles t where t.user_id = auth.uid()), 'none') end
 $$;
 
 create or replace function public.bg_my_role() returns text
@@ -88,6 +88,7 @@ declare r text := public.bg_role();
 begin
   if r is null then return false; end if;
   if r = 'owner' then return true; end if;
+  if r is distinct from 'admin' then return false; end if;   -- 'none': signed in but not yet permitted
   if op = 'select' then
     return coll in ('contacts','inq','followups','appts','slots','inbox','sales','payments','moves','products','msglog','services','accounts','cfg');
   elsif op = 'insert' then
@@ -136,33 +137,40 @@ create policy "role delete" on public.records for delete to authenticated using 
 revoke all on public.records from anon;
 grant select, insert, update, delete on public.records to authenticated;
 
--- Team list and role changes, for the owner screen in the app (Settings > Team and access).
+-- Team list and role changes, for the owner's Users page in the app.
+drop function if exists public.bg_team();
 create or replace function public.bg_team()
-returns table(email text, role text, last_sign_in_at timestamptz)
+returns table(email text, role text, last_sign_in_at timestamptz, created_at timestamptz)
 language plpgsql stable security definer set search_path = public as $$
 begin
   if public.bg_role() is distinct from 'owner' then raise exception 'not_owner' using errcode = '42501'; end if;
-  return query select u.email::text, coalesce(t.role, 'admin'), u.last_sign_in_at
+  return query select u.email::text, coalesce(t.role, 'none'), u.last_sign_in_at, u.created_at
                from auth.users u left join public.team_roles t on t.user_id = u.id order by u.created_at;
 end;
 $$;
 
--- Change someone's access. Callable by an owner in the app, or by the database owner in the SQL editor
--- (for example: select bg_set_role('kate@example.com', 'owner');).
+-- Give someone access ('owner' or 'admin') or take it away ('none'). Callable by an owner in the app, or by
+-- the database owner in the SQL editor (for example: select bg_set_role('kate@example.com', 'owner');).
 create or replace function public.bg_set_role(p_email text, p_role text) returns void
 language plpgsql security definer set search_path = public as $$
-declare uid uuid; em text; others int;
+declare uid uuid; em text; cur text; others int;
 begin
   if auth.uid() is not null and public.bg_role() is distinct from 'owner' then raise exception 'not_owner' using errcode = '42501'; end if;
-  if p_role not in ('owner','admin') then raise exception 'bad_role'; end if;
+  if p_role not in ('owner','admin','none') then raise exception 'bad_role'; end if;
   select u.id, u.email into uid, em from auth.users u where lower(u.email) = lower(btrim(p_email)) limit 1;
   if uid is null then raise exception 'no_such_user'; end if;
-  if p_role = 'admin' then
+  if p_role = 'none' and uid = auth.uid() then raise exception 'cannot_remove_self'; end if;
+  select t.role into cur from public.team_roles t where t.user_id = uid;
+  if cur = 'owner' and p_role <> 'owner' then
     select count(*) into others from public.team_roles where role = 'owner' and user_id <> uid;
     if others = 0 then raise exception 'last_owner'; end if;
   end if;
-  insert into public.team_roles(user_id, email, role) values (uid, em, p_role)
-    on conflict (user_id) do update set role = excluded.role, email = excluded.email, updated_at = now();
+  if p_role = 'none' then
+    delete from public.team_roles where user_id = uid;
+  else
+    insert into public.team_roles(user_id, email, role) values (uid, em, p_role)
+      on conflict (user_id) do update set role = excluded.role, email = excluded.email, updated_at = now();
+  end if;
 end;
 $$;
 

@@ -133,14 +133,19 @@ const nextDow = (dow, min = 3) => { for (let i = min; i < 40; i++) { const s = n
 
 
   // ── roles: owner and admin ──
+  const seedPre = async () => db.query("insert into records(collection,id,data) values('contacts','pre1','{}') on conflict do nothing");
   ok('Owner is recognised', (await asTeam('select bg_my_role() r')).rows[0].r === 'owner');
-  ok('Someone not listed is an Admin by default', (await asAdmin('select bg_my_role() r')).rows[0].r === 'admin');
+  ok('A login nobody has permitted yet has no access', (await asAdmin('select bg_my_role() r')).rows[0].r === 'none');
+  await seedPre();
+  ok('...and sees nothing, and can write nothing', (await asAdmin('select count(*)::int n from records')).rows[0].n === 0 && !!(await errOf(() => asAdmin("insert into records(collection,id,data) values('contacts','zz','{}')"))));
+  await asTeam("select bg_set_role('amy@test','admin')");
+  ok('The owner can permit them as Admin', (await asAdmin('select bg_my_role() r')).rows[0].r === 'admin');
   ok('Signed-out visitors have no role and cannot ask for one', !!(await errOf(() => asAnon('select bg_my_role()'))));
   const seed = async (col, id, data) => db.query("insert into records(collection,id,data) values($1,$2,$3::jsonb) on conflict (collection,id) do update set data=excluded.data", [col, id, JSON.stringify(data)]);
   await seed('expenses', 'e1', { amount: 500 }); await seed('accounts', 'a1', { name: 'M-Pesa' }); await seed('contacts', 'c9', { name: 'Zawadi' });
   await seed('services', 'sv1', { name: 'Sew-in' }); await seed('cfg', 'settings', { biz: 'B&G' }); await seed('sales', 'sa1', { no: 'S1', total: 1000 });
   const cnt = async (who, col) => (await who('select count(*)::int n from records where collection=$1', [col])).rows[0].n;
-  ok('Admin can read clients, sales and services', (await cnt(asAdmin, 'contacts')) === 1 && (await cnt(asAdmin, 'sales')) === 1 && (await cnt(asAdmin, 'services')) === 1);
+  ok('Admin can read clients, sales and services', (await cnt(asAdmin, 'contacts')) >= 1 && (await cnt(asAdmin, 'sales')) === 1 && (await cnt(asAdmin, 'services')) === 1);
   ok('Admin cannot see expenses or the audit trail (empty, not an error)', (await cnt(asAdmin, 'expenses')) === 0);
   ok('Owner sees expenses', (await cnt(asTeam, 'expenses')) === 1);
   ok('Admin can add a client and a booking', !(await errOf(() => asAdmin("insert into records(collection,id,data) values('contacts','c10','{\"name\":\"New\"}'),('appts','ap1','{}')"))));
@@ -158,13 +163,18 @@ const nextDow = (dow, min = 3) => { for (let i = min; i < 40; i++) { const s = n
   ok('Owner can void a sale', !(await errOf(() => asTeam("update records set data=data||'{\"void\":true}' where collection='sales'"))));
   ok('Admin cannot list the team or change roles', /not_owner/.test(await errOf(() => asAdmin('select * from bg_team()')) || '') && /not_owner/.test(await errOf(() => asAdmin("select bg_set_role('amy@test','owner')")) || ''));
   ok('Signed-out visitors cannot call the team functions', !!(await errOf(() => asAnon("select bg_set_role('amy@test','owner')"))) && !!(await errOf(() => asAnon('select * from bg_team()'))));
-  ok('Owner sees every login, unlisted ones as admin', (await asTeam('select * from bg_team()')).rows.map(r => r.email + ':' + r.role).join() === 'kate@test:owner,amy@test:admin,new@test:admin');
+  ok('Owner sees every login, unlisted ones as admin', (await asTeam('select * from bg_team()')).rows.map(r => r.email + ':' + r.role).join() === 'kate@test:owner,amy@test:admin,new@test:none');
   await asTeam("select bg_set_role('amy@test','owner')");
   ok('Owner can promote an admin to owner', (await asAdmin('select bg_my_role() r')).rows[0].r === 'owner');
   await asTeam("select bg_set_role('amy@test','admin')");
   ok('Owner can demote them again', (await asAdmin('select bg_my_role() r')).rows[0].r === 'admin');
   ok('The last owner cannot be demoted', /last_owner/.test(await errOf(() => asTeam("select bg_set_role('kate@test','admin')")) || ''));
   ok('An unknown email is rejected', /no_such_user/.test(await errOf(() => asTeam("select bg_set_role('ghost@test','admin')")) || ''));
+  await asTeam("select bg_set_role('amy@test','none')");
+  ok('The owner can take access away again', (await asAdmin('select bg_my_role() r')).rows[0].r === 'none' && (await asAdmin('select count(*)::int n from records')).rows[0].n === 0);
+  ok('An owner cannot remove their own access', /cannot_remove_self/.test(await errOf(() => asTeam("select bg_set_role('kate@test','none')")) || ''));
+  ok('A bad role is rejected', /bad_role/.test(await errOf(() => asTeam("select bg_set_role('amy@test','boss')")) || ''));
+  await asTeam("select bg_set_role('amy@test','admin')");
   ok('Role table is not readable directly by anyone signed in', !!(await errOf(() => asTeam('select * from team_roles'))));
 
   // ── what customers can see of the diary ──

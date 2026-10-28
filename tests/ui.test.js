@@ -115,12 +115,12 @@ const CFG = { biz: 'Blink & Glow', tz: 'Africa/Nairobi', phone: '0712345678', ho
     await pg.route('https://cdn.jsdelivr.net/**', r => r.fulfill({ contentType: 'application/javascript', body: `window.__ROLE='${role}';window.__SEED=${JSON.stringify(rows.map(x => ({ collection: x.collection, id: x.id, data: x.data })))};` + FAKE }));
     await pg.route('http://app.test/**', r => r.request().url().endsWith('config.js') ? r.fulfill({ contentType: 'application/javascript', body: "window.BGHQ_CONFIG={url:'https://x.supabase.co',key:'k',publicUrl:'https://blinknglow.vercel.app'}" }) : r.fulfill({ contentType: 'text/html', body: INDEX }));
     await pg.goto('http://app.test/'); await pg.waitForSelector('#gateForm', { state: 'visible' });
-    await pg.fill('#gEmail', 'x@y.z'); await pg.fill('#gPass', 'correct-horse'); await pg.click('#gBtn'); await pg.waitForSelector('.nav', { timeout: 8000 }); await pg.waitForTimeout(400); pg.er = er; return pg };
+    await pg.fill('#gEmail', 'x@y.z'); await pg.fill('#gPass', 'correct-horse'); await pg.click('#gBtn'); await pg.waitForSelector(role === 'none' ? '.pubwrap' : '.nav', { timeout: 8000 }); await pg.waitForTimeout(400); pg.er = er; return pg };
   const navOf = pg => pg.$$eval('.nav span', e => e.map(x => x.textContent).filter(Boolean));
   const ow = await login('owner'), ad = await login('admin');
   const nOwner = await navOf(ow), nAdmin = await navOf(ad);
-  ok('Owner menu has everything', ['Overview', 'Bookings', 'Clients', 'Sales', 'Finance Tracker', 'Stock', 'Marketing', 'Reports', 'Settings'].every(t => nOwner.some(x => x.includes(t))), nOwner);
-  ok('Admin menu has only day-to-day pages', ['Overview', 'Bookings', 'Clients', 'Sales', 'Stock'].every(t => nAdmin.some(x => x.includes(t))) && !nAdmin.some(x => /Finance|Reports|Settings|Marketing|Services/.test(x)), nAdmin);
+  ok('Owner menu has everything', ['Overview', 'Bookings', 'Clients', 'Sales', 'Finance Tracker', 'Stock', 'Marketing', 'Reports', 'Users', 'Settings'].every(t => nOwner.some(x => x.includes(t))), nOwner);
+  ok('Admin menu has only day-to-day pages', ['Overview', 'Bookings', 'Clients', 'Sales', 'Stock'].every(t => nAdmin.some(x => x.includes(t))) && !nAdmin.some(x => /Finance|Reports|Settings|Marketing|Services|Users/.test(x)), nAdmin);
   ok('Sidebar says which access you have', /Owner access/.test(await ow.textContent('.sidefoot')) && /Admin access/.test(await ad.textContent('.sidefoot')));
   ok('Owner overview shows revenue; Admin overview does not', /Revenue target/.test(await ow.textContent('main')) && !/Revenue target|Estimated profit|Money collected/.test(await ad.textContent('main')));
   ok('Admin overview shows today\'s work', /Appointments today/.test(await ad.textContent('main')) && /Requests to confirm/.test(await ad.textContent('main')));
@@ -134,9 +134,16 @@ const CFG = { biz: 'Blink & Glow', tz: 'Africa/Nairobi', phone: '0712345678', ho
   ok('Admin stock page has no cost value or receive/new product', !/Stock value/.test(await ad.textContent('main')) && !(await ad.$('button:has-text("New product")')) && !(await ad.$('button:has-text("Receive")')));
   // owner: settings, team, hours, link
   await ow.click('.nav >> text=Settings'); await ow.waitForTimeout(500);
-  ok('Owner sees Team and access with both people', /Team and access/.test(await ow.textContent('main')) && /kate@test/.test(await ow.textContent('main')) && /amy@test/.test(await ow.textContent('main')));
-  await ow.selectOption('select[aria-label="Access for amy@test"]', 'owner'); await ow.waitForTimeout(300);
-  ok('Changing someone\'s access calls the server', await ow.evaluate(() => window.__FAKEDB.log.some(l => l[0] === 'role' && l[1] === 'amy@test' && l[2] === 'owner')));
+  await ow.click('.nav >> text=Users'); await ow.waitForTimeout(600);
+  const utxt = await ow.textContent('main');
+  ok('Owner has a Users page listing every login', /People with a login/.test(utxt) && /kate@test/.test(utxt) && /amy@test/.test(utxt) && /new@test/.test(utxt));
+  ok('A login nobody has permitted shows as waiting for access', /Waiting for access/.test(utxt) && /1 person has a login but no access yet/.test(utxt));
+  ok('Users page explains how to add a person and what each access can do', /Add a new person/.test(utxt) && /What each kind of access can do/.test(utxt));
+  await ow.selectOption('select[aria-label="Access for new@test"]', 'admin'); await ow.waitForTimeout(500);
+  ok('Permitting someone calls the server and the list updates', await ow.evaluate(() => window.__FAKEDB.log.some(l => l[0] === 'role' && l[1] === 'new@test' && l[2] === 'admin')) && !/1 person has a login but no access yet/.test(await ow.textContent('main')));
+  await ow.selectOption('select[aria-label="Access for amy@test"]', 'none'); await ow.waitForTimeout(500);
+  ok('Removing access calls the server', await ow.evaluate(() => window.__FAKEDB.log.some(l => l[0] === 'role' && l[1] === 'amy@test' && l[2] === 'none')));
+  await ow.click('.nav >> text=Settings'); await ow.waitForTimeout(400);
   ok('Opening hours default to 8 pm, Monday to Saturday', await ow.evaluate(() => [1, 2, 3, 4, 5, 6].every(d => document.getElementById('st-hc' + d).value === '20:00')));
   ok('Booking address is fixed to the live site and cannot be typed over', await ow.evaluate(() => { const e = document.getElementById('st-bookingBase'); return e.disabled && e.value === 'https://blinknglow.vercel.app/' }));
   await ow.click('.nav >> text=Bookings'); await ow.click('text=Booking link and QR'); await ow.waitForTimeout(300);
@@ -146,6 +153,9 @@ const CFG = { biz: 'Blink & Glow', tz: 'Africa/Nairobi', phone: '0712345678', ho
   await ow.keyboard.press('Escape');
   await ow.click('button:has-text("Install on phone")'); await ow.waitForTimeout(200);
   ok('Install help explains iPhone, Android and computer', /Add to Home Screen/.test(await ow.textContent('#modalroot')) && /Install app/.test(await ow.textContent('#modalroot')));
+  const nx = await login('none');
+  ok('A login without access sees only a waiting screen, no menu and no data', /Waiting for access/.test(await nx.textContent('body')) && !(await nx.$('.nav')) && !/Wanjiru/.test(await nx.evaluate(() => document.body.innerText)));
+  ok('The waiting screen offers Check again and Sign out', !!(await nx.$('button:has-text("Check again")')) && !!(await nx.$('button:has-text("Sign out")')));
   ok('No script errors in the owner or admin screens', ow.er.length === 0 && ad.er.length === 0, [ow.er, ad.er]);
   // install files
   const fsx = require('fs'), path = require('path'), root = path.join(__dirname, '..');

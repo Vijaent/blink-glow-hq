@@ -5,7 +5,7 @@ Business hub for Blink & Glow (Empire Square, Kiambu Road, Nairobi): clients, bo
 - **App:** one page, `index.html`, hosted on Vercel. `config.js` holds the Supabase address and public key.
 - **Data and logins:** Supabase. Every private record lives in one table, `public.records`.
 - **Access:** only signed-in team members can see or change anything (row-level security). There is no public sign-up; logins are created by the admin.
-- **Two kinds of login.** *Owner* sees and changes everything (finance, reports, settings, services, marketing, team access). *Admin* handles clients, bookings, sales and payment entry, and stock movements; the database itself refuses an Admin access to expenses, accounts, transfers, content, campaigns, settings and services, and refuses voiding, refunding or adjusting a sale. Anyone not listed as Owner is an Admin. The Owner changes people's access in Settings → Team and access.
+- **Two kinds of login.** *Owner* sees and changes everything (finance, reports, settings, services, marketing, team access). *Admin* handles clients, bookings, sales and payment entry, and stock movements; the database itself refuses an Admin access to expenses, accounts, transfers, content, campaigns, settings and services, and refuses voiding, refunding or adjusting a sale. A login that has not been given access sees only a waiting screen. The Owner gives or removes access on the **Users** page (owner-only menu item).
 - **Installable.** The site is an installable app (manifest, icons, service worker): on a phone use Add to Home Screen / Install app, or the *Install on phone* button in the menu.
 - **Customers** never sign in. The public booking page (`/#book`, plus tracking links such as `/#book-ig`) can only call three database functions, which return the services, the busy times (no names) and let a customer request a time. Opening hours, notice, breaks, blocked dates, service length and double-booking are all enforced in the database, not in the customer's browser.
 
@@ -16,7 +16,7 @@ Business hub for Blink & Glow (Empire Square, Kiambu Road, Nairobi): clients, bo
 3. **Connect the app.** Supabase → Project Settings → API Keys: copy the Project URL and the **publishable** key into `config.js`, commit and push.
 4. **Hosting.** In Vercel: Add New → Project → import this repo from GitHub → Deploy. No build settings or environment variables are needed.
 5. **Site address.** In Supabase, Authentication → URL Configuration: set **Site URL** to the Vercel address (or custom domain) and add the same address under Redirect URLs. Invite and reset emails link here.
-6. **Team logins.** New logins start as Admin. To make someone an Owner, sign in as an Owner and use Settings → Team and access, or run `select bg_set_role('person@example.com','owner');` in the SQL Editor.
+6. **Team logins.** A new login can sign in but has no access until an Owner opens **Users** and chooses Admin or Owner for it. To set the first owner, run `select bg_set_role('person@example.com','owner');` in the SQL Editor.
     Authentication → Users → Add user. Either **Send invitation** or **Create new user** with "Auto confirm" ticked and share the password privately. Create one for the owner, one per stylist, and one for the admin.
 7. **First sign-in.** Open the site, sign in, go to Settings and check opening hours, stylists, services and prices. Settings are published to the booking page automatically.
 

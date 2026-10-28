@@ -2607,7 +2607,7 @@ let S=JSON.parse(JSON.stringify(DEF));
 let ROLE='owner';const isOwner=()=>ROLE==='owner';const ADMIN_TABS=['overview','bookings','clients','sales','stock'];
 let db=null,isAdmin=false,mode='boot',tab='overview',sub={},PER={k:'month',a:'',b:''},ready=false,dbErr='';
 const IDX={};
-const NAV=[['overview','Overview','M3 12l9-8 9 8M5 10v10h14V10'],['bookings','Bookings','M4 6h16v14H4zM4 10h16M8 3v4M16 3v4'],['clients','Clients','M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 4-6 8-6s8 2 8 6'],['sales','Sales','M4 20V10M10 20V4M16 20v-8M22 20H2'],['money','Finance Tracker','M3 7h18v12H3zM3 11h18M16 15h2'],['stock','Stock','M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8'],['services','Services','M6 3v8a3 3 0 006 0V3M9 11v10M18 3c-2 2-3 5-3 8h3v10'],['marketing','Marketing Park','M3 11v3h4l8 5V6L7 11zM18 9a4 4 0 010 6'],['reports','Reports','M6 3h9l4 4v14H6zM9 12h7M9 16h7'],['settings','Settings','M12 15a3 3 0 100-6 3 3 0 000 6zM19 12l2-1-2-4-2 1-2-1-1-2h-4l-1 2-2 1-2-1-2 4 2 1v2l-2 1 2 4 2-1 2 1 1 2h4l1-2 2-1 2 1 2-4-2-1z']];
+const NAV=[['overview','Overview','M3 12l9-8 9 8M5 10v10h14V10'],['bookings','Bookings','M4 6h16v14H4zM4 10h16M8 3v4M16 3v4'],['clients','Clients','M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 4-6 8-6s8 2 8 6'],['sales','Sales','M4 20V10M10 20V4M16 20v-8M22 20H2'],['money','Finance Tracker','M3 7h18v12H3zM3 11h18M16 15h2'],['stock','Stock','M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8'],['services','Services','M6 3v8a3 3 0 006 0V3M9 11v10M18 3c-2 2-3 5-3 8h3v10'],['marketing','Marketing Park','M3 11v3h4l8 5V6L7 11zM18 9a4 4 0 010 6'],['reports','Reports','M6 3h9l4 4v14H6zM9 12h7M9 16h7'],['users','Users','M9 11a4 4 0 100-8 4 4 0 000 8zM2 21c0-4 3-6 7-6s7 2 7 6M17 3.5a4 4 0 010 7M19 15c2.5.6 3 3 3 6'],['settings','Settings','M12 15a3 3 0 100-6 3 3 0 000 6zM19 12l2-1-2-4-2 1-2-1-1-2h-4l-1 2-2 1-2-1-2 4 2 1v2l-2 1 2 4 2-1 2 1 1 2h4l1-2 2-1 2 1 2-4-2-1z']];
 
 /* ================= helpers ================= */
 function h(t,a,k){const e=document.createElement(t);if(a)for(const x in a){const v=a[x];if(v===false||v==null)continue;if(x==='class')e.className=v;else if(x==='text')e.textContent=v;else if(x.slice(0,2)==='on')e.addEventListener(x.slice(2),v);else e.setAttribute(x,v===true?'':v)}
@@ -3393,16 +3393,36 @@ function capacityCard(){const R=range('last'),m=metrics(R.a,R.b);const q=(k,d)=>
   h('div',{class:'banner '+(verdict[0]==='good'?'info':'')},[h('p',{text:verdict[1]})]),h('p',{class:'hint',text:'Rule: sales = target ÷ average sale; appointments = sales ÷ (1 − cancel rate); hours = appointments × hours each; capacity = weekly open hours × stylists × 4.33. This ignores seasonality and walk-in demand.'})]))}
 
 
-/* ================= Team and access (owner only) ================= */
-function teamCard(){const box=h('div',{style:'display:flex;flex-direction:column;gap:10px'},[h('p',{class:'hint',text:'Loading team…'})]);
- const load=async()=>{try{const r=await window.bghq.sb.rpc('bg_team');if(r.error)throw r.error;const rows=r.data||[];box.innerHTML='';
-   box.appendChild(tbl(['Email','Last sign-in','Access'],rows.map(u=>{
-     const sel=h('select',{'aria-label':'Access for '+u.email,style:'width:auto',onchange:async e=>{const v=e.target.value;try{const x=await window.bghq.sb.rpc('bg_set_role',{p_email:u.email,p_role:v});if(x.error)throw x.error;toast('Access updated for '+u.email)}catch(err){toast(/last_owner/.test(String(err&&err.message))?'There must always be at least one Owner.':'Could not change access',true);await load()}}},[['owner','Owner: everything'],['admin','Admin: day-to-day only']].map(o=>h('option',{value:o[0],text:o[1]})));
-     sel.value=u.role==='owner'?'owner':'admin';
-     return [u.email,u.last_sign_in_at?fdy(String(u.last_sign_in_at).slice(0,10)):'Never',sel]}),{empty:h('p',{class:'hint',text:'No users yet.'})}));
-   box.appendChild(h('p',{class:'hint',text:'To add a person, create their login in the Supabase dashboard (Authentication, Users, Add user). They appear here as Admin, and you can make them Owner.'}))}
-  catch(e){box.innerHTML='';box.appendChild(h('p',{class:'err',text:'Could not load the team list.'}))}};
- load();return card('Team and access','Owner sees and changes everything. Admin handles clients, bookings, sales and stock, and cannot see finance, reports or settings.',box)}
+/* ================= Users (owner only) ================= */
+const UST={rows:null,loading:false,err:''};
+async function loadUsers(){UST.loading=true;try{const r=await window.bghq.sb.rpc('bg_team');if(r.error)throw r.error;UST.rows=r.data||[];UST.err=''}catch(e){UST.err='Could not load the list of people. Check your connection and press Refresh.';UST.rows=UST.rows||[]}UST.loading=false;sched()}
+async function setAccess(email,role){try{const x=await window.bghq.sb.rpc('bg_set_role',{p_email:email,p_role:role});if(x.error)throw x.error;toast(role==='none'?'Access removed for '+email:'Access updated for '+email)}
+ catch(err){const m=String(err&&err.message||err);toast(/last_owner/.test(m)?'There must always be at least one Owner.':/cannot_remove_self/.test(m)?'You cannot remove your own access.':'Could not change access. Try again.',true)}
+ await loadUsers()}
+function viewUsers(){const w=h('div',{class:'wrap'});
+ if(!SA||!window.bghq||!isOwner()){w.appendChild(emptyBox('Owner only','Only an Owner can manage who uses Blink & Glow HQ.'));return w}
+ if(UST.rows===null&&!UST.loading)loadUsers();
+ const rows=UST.rows||[],waiting=rows.filter(u=>u.role==='none');
+ w.appendChild(h('div',{class:'row'},[h('button',{class:'btn',type:'button',text:UST.loading?'Refreshing…':'Refresh list',disabled:UST.loading,onclick:loadUsers}),
+  h('button',{class:'btn ghost',type:'button',text:'Copy sign-in link',onclick:async()=>{const u=String(pubBase()).replace(/\/$/,'');try{await navigator.clipboard.writeText(u);toast('Copied: '+u)}catch(e){toast(u)}}})]));
+ if(UST.err)w.appendChild(h('div',{class:'banner'},[h('p',{text:UST.err})]));
+ if(waiting.length)w.appendChild(h('div',{class:'banner'},[h('p',{text:waiting.length+(waiting.length===1?' person has':' people have')+' a login but no access yet. Choose Admin or Owner for them below.'})]));
+ const pillFor=r=>r==='owner'?pill('Owner','green'):r==='admin'?pill('Admin','good'):pill('Waiting for access','warn');
+ w.appendChild(card('People with a login','Everyone who can sign in appears here. Nobody can see anything until you give them access.',tbl(['Email','Status','Last sign-in','Access'],rows.map(u=>{
+   const sel=h('select',{'aria-label':'Access for '+u.email,style:'width:auto',onchange:e=>setAccess(u.email,e.target.value)},[['owner','Owner: everything'],['admin','Admin: day-to-day only'],['none','No access']].map(o=>h('option',{value:o[0],text:o[1]})));
+   sel.value=u.role||'none';
+   return [u.email+(u.email===myEmail?' (you)':''),pillFor(u.role),u.last_sign_in_at?fdy(String(u.last_sign_in_at).slice(0,10)):'Never',sel]}),{empty:UST.rows===null?h('p',{class:'hint',text:'Loading…'}):emptyBox('No logins yet','Create the first login in Supabase, then press Refresh list.')})));
+ w.appendChild(card('Add a new person','A person needs a login first, then you give them access here.',h('ol',{style:'margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px'},[
+  h('li',{text:'Open Supabase, then Authentication, then Users, then Add user, then Create new user.'}),
+  h('li',{text:'Type their email and a password, tick Auto Confirm User, and create it. Give them the password privately.'}),
+  h('li',{text:'Come back here and press Refresh list. Their email appears as Waiting for access.'}),
+  h('li',{text:'Choose Admin (day-to-day work) or Owner (everything) in the Access column.'}),
+  h('li',{text:'Send them the sign-in link. They sign in with that email and password.'})])));
+ const Y='Yes',N='—';
+ w.appendChild(card('What each kind of access can do',null,tbl(['','Owner','Admin'],[
+  ['Clients, inquiries and follow-ups',Y,Y],['Bookings, requests and the booking link',Y,Y],['Record sales and payments',Y,Y],['Record stock used',Y,Y],
+  ['Void, refund or adjust a sale',Y,N],['Add products, receive stock, see costs',Y,N],['Finance Tracker: expenses, accounts, profit',Y,N],['Services and prices',Y,N],['Marketing and content',Y,N],['Reports and revenue figures',Y,N],['Settings, hours and Users',Y,N]])));
+ return w}
 
 /* ================= Settings ================= */
 function viewSettings(){const w=h('div',{class:'wrap'}),F={};
@@ -3430,7 +3450,6 @@ function viewSettings(){const w=h('div',{class:'wrap'}),F={};
   S.inactiveDays=n('inactiveDays')||90;S.repeatDefault=n('repeatDefault')||35;FU_TYPES.forEach(k=>{S.fu[k]=n('fu_'+k)});Object.keys(TPL_LABEL).forEach(k=>{S.templates[k]=F['tp_'+k].value});
   S.noNeg=F.noNeg.checked;S.autoConsume=F.autoConsume.checked;S.stockWarnDays=n('stockWarnDays')||30;
   await saveS();w.removeAttribute('data-dirty');msg.textContent='';toast('Settings saved')}catch(e){msg.textContent='Could not save: '+(e&&e.message||'try again')}}}),msg]));
- if(SA&&window.bghq)w.appendChild(teamCard());
  w.appendChild(card('Connections','Only items marked Working have been set up and tested. Nothing is pretended.',tbl(['Connection','Status','Note'],[['WhatsApp click-to-chat','Working','Opens WhatsApp with your message. You press send.'],['WhatsApp Business API (automatic messages)','Not configured','Needs a Meta Business account, a verified number and a server. Not possible inside this page.'],['Email and SMS confirmations','Unavailable','No provider is connected.'],['Shared database',db?'Working':'Local only',db?(SA?'Supabase: every signed-in team member sees the same records live.':'Records are shared between everyone with edit access.'):'This view is not connected to the shared database. Data stays in this browser.'],['M-Pesa and bank balances','Unavailable','Balances are calculated from your entries. Live balances need an integration.'],['Dedicated server and logins (Supabase)',SA?'Working':'Pending',SA?'Team logins, row-level security and server-side booking checks.':'Needed for a fully public booking page with server-side checks.']].map(r=>[r[0],pill(r[1],r[1]==='Working'?'good':r[1]==='Pending'?'warn':''),r[2]]))));
  w.appendChild(card('Data tools','',h('div',{class:'row'},[h('button',{class:'btn ghost',text:'Run self-tests',onclick:selfTestModal}),h('button',{class:'btn ghost',text:'Export all clients (CSV)',onclick:()=>csvDownload('clients.csv',['Name','Phone','Email','Source','Status','Visits','Spend','Last visit'],D.contacts.map(c=>[c.name,c.phone,c.email,c.source,life(c),(IDX.cs[c.id]||{}).visits,(IDX.cs[c.id]||{}).spend,(IDX.cs[c.id]||{}).last]))}),h('button',{class:'btn ghost',text:'Export payments (CSV)',onclick:()=>csvDownload('payments.csv',['Date','Amount','Method','Account','Sale','Reference'],D.payments.map(p=>[p.date,p.amount,p.method,(D.accounts.find(a=>a.id===p.accountId)||{}).name,(D.sales.find(s=>s.id===p.saleId)||{}).no||'',p.ref]))}),h('button',{class:'btn ghost',text:'Export bookings (CSV)',onclick:()=>csvDownload('bookings.csv',['Date','Start','Client','Service','Stylist','Status','Price','Deposit'],D.appts.map(a=>[a.date,mstr(a.start),cName(a.contactId),(IDX.service[a.serviceId]||{}).name,a.staff,a.status,a.price,a.deposit]))}),h('button',{class:'btn ghost',text:'Load demonstration data',onclick:loadDemo}),h('button',{class:'btn danger',text:'Remove demonstration data',onclick:()=>confirmBox('Remove all demonstration records?',removeDemo,'Remove')})])));
  w.appendChild(card('Access and data safety','',h('div',{style:'display:flex;flex-direction:column;gap:8px'},SA?[h('p',{style:'margin:0',text:'Only signed-in team members can see clients, sales or money. Customers use the public booking page, which can see free times but nothing else. Overlapping bookings are refused by the database itself, even if two people book at the same moment.'}),h('p',{style:'margin:0',text:'Money is stored as whole shillings. Backups: Supabase backups plus the CSV exports above. Edits are recorded in an audit trail ('+D.audit.length+' entries).'})]:[h('p',{style:'margin:0',text:'Who sees what: people with edit access to this page (Editors) see the full dashboard and all records. Anyone else who can open the link sees only the public booking page.'}),h('p',{style:'margin:0',text:'Limits of this version: bookings are guarded by a claim-and-verify step, not a database rule. For a public page with no sign-in and database-enforced rules, use the standalone version.'})])));
@@ -3504,12 +3523,18 @@ function selfTestModal(){const T=selfTests(),bad=T.filter(t=>!t[1]).length;modal
 window.__hub.tests=selfTests;
 
 /* ================= shell ================= */
-const VIEWS={overview:()=>isOwner()?viewOverview():viewOverviewAdmin(),bookings:viewBookings,clients:viewClients,sales:viewSales,money:viewMoney,stock:viewStock,services:viewServices,marketing:viewMarketing,reports:viewReports,settings:viewSettings};
-const TITLES={overview:['Overview','What is happening in the business right now'],bookings:['Bookings','Appointments, requests and the booking link'],clients:['Clients','One list for leads, new and returning clients'],sales:['Sales','Every sale, payment status and balance'],money:['Finance Tracker','Payments, spending, accounts and profit'],stock:['Stock','Products, movements and alerts'],services:['Services','Catalogue and what each service really earns'],marketing:['Marketing Park','Content plan and what it brings in'],reports:['Reports','Reviews, sources and planning'],settings:['Settings','Hours, rules, lists and templates']};
+const VIEWS={overview:()=>isOwner()?viewOverview():viewOverviewAdmin(),bookings:viewBookings,clients:viewClients,sales:viewSales,money:viewMoney,stock:viewStock,services:viewServices,marketing:viewMarketing,reports:viewReports,settings:viewSettings,users:viewUsers};
+const TITLES={overview:['Overview','What is happening in the business right now'],bookings:['Bookings','Appointments, requests and the booking link'],clients:['Clients','One list for leads, new and returning clients'],sales:['Sales','Every sale, payment status and balance'],money:['Finance Tracker','Payments, spending, accounts and profit'],stock:['Stock','Products, movements and alerts'],services:['Services','Catalogue and what each service really earns'],marketing:['Marketing Park','Content plan and what it brings in'],reports:['Reports','Reviews, sources and planning'],settings:['Settings','Hours, rules, lists and templates'],users:['Users','Who can sign in, and what they can do']};
 let minimised=false;
 function quickAdd(){const acts=[['New client',()=>contactForm()],['New inquiry',()=>inquiryForm()],['New booking',()=>bookingForm()],['New sale',()=>saleForm()],['New payment',()=>payForm()],['New expense',()=>expenseForm(),1],['Stock adjustment',()=>D.products.length?moveForm():toast('Add a product in Stock first',true)],['New content item',()=>contentForm(),1]].filter(a=>isOwner()||!a[2]);
  modal('Quick add',h('div',{class:'grid'},acts.map(a=>h('button',{class:'btn ghost',type:'button',text:a[0],onclick:()=>{closeModal();a[1]()}}))))}
 function dataList(){let dl=$('#dl-contacts');if(!dl){dl=h('datalist',{id:'dl-contacts'});document.body.appendChild(dl)}if(!isAdmin){dl.innerHTML='';return}dl.innerHTML='';D.contacts.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(c=>dl.appendChild(h('option',{value:contactLabel(c)})))}
+let myEmail='';
+function noAccessView(){return h('div',{class:'pubwrap'},[h('div',{class:'logo',style:'padding:0'},[h('i',{text:'B'}),h('b',{text:S.biz})]),
+ card('Waiting for access','You are signed in, but the owner has not given this login access yet.',h('div',{style:'display:flex;flex-direction:column;gap:12px'},[
+  h('p',{style:'margin:0',text:'Signed in as '+(myEmail||'this login')+'.'}),
+  h('p',{style:'margin:0',text:'Ask the owner to open Users, find this email, and choose Admin or Owner. Then press Check again.'}),
+  h('div',{class:'row'},[h('button',{class:'btn',type:'button',text:'Check again',onclick:async()=>{try{const rr=await window.bghq.sb.rpc('bg_my_role');if(!rr.error&&(rr.data==='owner'||rr.data==='admin'))location.reload();else toast('Still waiting for the owner to give access',true)}catch(e){toast('Could not check. Try again.',true)}}}),h('button',{class:'btn ghost',type:'button',text:'Sign out',onclick:()=>window.bghq.signOut()})])]))])}
 let deferredInstall=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstall=e;sched()});
 window.addEventListener('appinstalled',()=>{deferredInstall=null;sched()});
 const isStandalone=()=>{try{return window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}catch(e){return false}};
@@ -3529,11 +3554,12 @@ function render(){const root=$('#root');if(!root)return;
  if(tab==='settings'&&$('[data-dirty]')&&root.querySelector('[data-dirty]')&&isAdmin&&!/^#book/.test(location.hash))return;
  root.innerHTML='';
  if(isPublicView()){root.appendChild(viewPublic());return}
+ if(SA&&ROLE==='none'){root.appendChild(noAccessView());return}
  dataList();
  if(!isOwner()&&!ADMIN_TABS.includes(tab))tab='overview';
  const app=h('div',{class:'app'+(minimised?' min':'')+(sub.menu?' open':'')});
  const side=h('aside',{class:'side','aria-label':'Main navigation'},[h('div',{class:'logo'},[h('i',{text:'B'}),h('b',{text:S.biz})]),
-  h('nav',{class:'nav'},NAV.filter(n=>isOwner()||ADMIN_TABS.includes(n[0])).map(n=>h('button',{type:'button','aria-current':tab===n[0]?'page':null,onclick:()=>{tab=n[0];sub.menu=false;try{localStorage.setItem('bnghub-tab',tab)}catch(e){}render();scrollTo(0,0)}},[(()=>{const ic=h('span',{style:'display:flex'});ic.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+n[2]+'"/></svg>';return ic})(),h('span',{text:n[1]})]))),
+  h('nav',{class:'nav'},NAV.filter(n=>(n[0]!=='users'||SA)&&(isOwner()||ADMIN_TABS.includes(n[0]))).map(n=>h('button',{type:'button','aria-current':tab===n[0]?'page':null,onclick:()=>{tab=n[0];sub.menu=false;try{localStorage.setItem('bnghub-tab',tab)}catch(e){}render();scrollTo(0,0)}},[(()=>{const ic=h('span',{style:'display:flex'});ic.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+n[2]+'"/></svg>';return ic})(),h('span',{text:n[1]})]))),
   h('button',{class:'btn ghost sm',type:'button',style:'margin-top:8px',text:minimised?'Expand':'Collapse menu',onclick:()=>{minimised=!minimised;render()}}),
   h('div',{class:'sidefoot'},[db?'Shared database connected':'Saving in this browser only',SA?h('div',{style:'margin-top:4px'},[h('b',{text:isOwner()?'Owner access':'Admin access'})]):null,installBtn(),SA&&window.bghq?h('div',{},[h('button',{class:'btn ghost sm',type:'button',style:'margin-top:8px',text:'Sign out',onclick:()=>window.bghq.signOut()})]):null])]);
  const tt=TITLES[tab]||['',''];
@@ -3556,8 +3582,10 @@ async function boot(){render();
  if(SA){const sess=await window.bghq.ready;
   if(!sess){isAdmin=false;mode='db';await loadPublic();setInterval(loadPublic,45000);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')loadPublic()});return}
   d=await window.claude.use('db');db=d;mode='db';isAdmin=true;myUid=sess.user.id;
-  try{const rr=await window.bghq.sb.rpc('bg_my_role');ROLE=(!rr.error&&rr.data==='owner')?'owner':'admin'}catch(e){ROLE='admin'}
+  try{const rr=await window.bghq.sb.rpc('bg_my_role');ROLE=(!rr.error&&rr.data==='owner')?'owner':(!rr.error&&rr.data==='admin')?'admin':'none'}catch(e){ROLE='none'}
+  myEmail=(sess.user&&sess.user.email)||'';
   render();
+  if(ROLE==='none')return;
   const err=e=>{dbErr='Some data could not be loaded: '+(e&&e.message||'permission');sched()};
   Object.keys(D).filter(c=>c!=='requests').forEach(c=>d.collection(cpath(c)).onSnapshot(s=>{D[c]=plainDocs(s);if(c==='slots')ready=true;reindex();sched()},err));
   d.collection('inbox').onSnapshot(s=>{D.requests=plainDocs(s);sched()},err);
