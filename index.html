@@ -2576,15 +2576,17 @@ var qrcode = function() {
       if(p.eventType==='DELETE')cache[c].delete(row.id);else cache[c].set(row.id,row.data||{});emit(c)
     }).subscribe(status=>{if(status==='SUBSCRIBED'&&ensureChannel.was)Object.keys(listeners).forEach(load);if(status==='SUBSCRIBED')ensureChannel.was=true})}
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&channel)Object.keys(listeners).forEach(load)});
+  const EXPIRED='Your sign-in has expired. Sign out and sign in again, then repeat this.';
+  async function guard(run){let r=await run();if(r.error&&(r.error.code==='42501'&&/permission denied for table/i.test(r.error.message||''))){try{await sb.auth.refreshSession()}catch(e){}r=await run();if(r.error&&r.error.code==='42501'&&/permission denied for table/i.test(r.error.message||''))throw new Error(EXPIRED)}return r}
   async function upsert(c,id,data){const clean=JSON.parse(JSON.stringify(data===undefined?{}:data));
-    const {error}=await sb.from(TABLE).upsert({collection:c,id:String(id),data:clean},{onConflict:'collection,id'});if(error)throw error;
+    const {error}=await guard(()=>sb.from(TABLE).upsert({collection:c,id:String(id),data:clean},{onConflict:'collection,id'}));if(error)throw error;
     (cache[c]=cache[c]||new Map()).set(String(id),clean);emit(c)}
   function docRef(c,id){return{
     async set(d){await upsert(c,id,d)},
     async update(p){let cur=cache[c]&&cache[c].get(String(id));
       if(!cur){const {data,error}=await sb.from(TABLE).select('data').eq('collection',c).eq('id',String(id)).maybeSingle();if(error)throw error;if(!data)throw {code:'not_found',message:'Record not found'};cur=data.data||{}}
       const x=JSON.parse(JSON.stringify(p));const next=Object.assign({},cur);Object.keys(x).forEach(k=>{if(x[k]&&x[k].__delete__)delete next[k];else next[k]=x[k]});await upsert(c,id,next)},
-    async delete(){const {error}=await sb.from(TABLE).delete().eq('collection',c).eq('id',String(id));if(error)throw error;if(cache[c]){cache[c].delete(String(id));emit(c)}},
+    async delete(){const {error}=await guard(()=>sb.from(TABLE).delete().eq('collection',c).eq('id',String(id)));if(error)throw error;if(cache[c]){cache[c].delete(String(id));emit(c)}},
     onSnapshot(cb,errCb){const l={cb:s=>{const m=s.docs.find(d=>d.id===String(id));cb({exists:!!m,data:()=>m?m.data():undefined})},err:errCb};
       (listeners[c]=listeners[c]||new Set()).add(l);ensureChannel();if(cache[c])l.cb(snap(c));else load(c);return()=>listeners[c].delete(l)}}}
   const db={
@@ -2956,7 +2958,7 @@ function profile(id){const c=IDX.contact[id];if(!c)return;const x=IDX.cs[id]||{v
   h('div',{class:'row'},[pill(life(c),'green'),c.source?pill('Source: '+c.source):pill('Source not recorded','warn'),c.birthday?pill('Birthday '+c.birthday):null]),
   h('div',{class:'grid'},[tile('Phone',c.phone||'—',c.wa&&c.wa!==c.phone?'WhatsApp '+c.wa:''),tile('Completed visits',String(Math.max(d.n,x.visits)),d.last?'Last '+fdy(d.last):'None yet'),tile('Total spend',money(x.spend),x.first?'First purchase '+fdy(x.first):'No purchase yet')]),
   c.notes?h('p',{style:'margin:0',text:c.notes}):null,
-  h('div',{class:'row'},[h('button',{class:'btn',type:'button',text:'WhatsApp',onclick:()=>{closeModal();waPick(c)}}),h('button',{class:'btn ghost',type:'button',text:'Edit',onclick:()=>{closeModal();contactForm(c)}}),h('button',{class:'btn ghost',type:'button',text:'Receipts',onclick:()=>{const ps=rcptOrder().filter(p=>{const s=D.sales.find(z=>z.id===p.saleId);return s&&s.contactId===id});if(!ps.length){toast('No payments yet',true);return}closeModal();modal('Receipts · '+c.name,h('div',{style:'display:flex;flex-direction:column;gap:8px'},ps.map(p=>h('button',{class:'btn ghost',type:'button',text:rcptNo(p)+' · '+fdy(p.date)+' · '+money(p.amount)+' · '+rcptData(p).kind,onclick:()=>receiptModal(p)}))))}}),h('button',{class:'btn ghost',type:'button',text:'Book',onclick:()=>{closeModal();bookingForm({who:c.name})}}),h('button',{class:'btn ghost',type:'button',text:'New sale',onclick:()=>{closeModal();saleForm({who:c.name})}}),h('button',{class:'btn ghost',type:'button',text:'Add follow-up',onclick:()=>{closeModal();fuForm(c.id)}})]),
+  h('div',{class:'row'},[h('button',{class:'btn',type:'button',text:'WhatsApp',onclick:()=>{closeModal();waPick(c)}}),h('button',{class:'btn ghost',type:'button',text:'Edit',onclick:()=>{closeModal();contactForm(c)}}),isOwner()?h('button',{class:'btn danger',type:'button',text:'Delete client',onclick:()=>{closeModal();deleteClient(c)}}):null,h('button',{class:'btn ghost',type:'button',text:'Receipts',onclick:()=>{const ps=rcptOrder().filter(p=>{const s=D.sales.find(z=>z.id===p.saleId);return s&&s.contactId===id});if(!ps.length){toast('No payments yet',true);return}closeModal();modal('Receipts · '+c.name,h('div',{style:'display:flex;flex-direction:column;gap:8px'},ps.map(p=>h('button',{class:'btn ghost',type:'button',text:rcptNo(p)+' · '+fdy(p.date)+' · '+money(p.amount)+' · '+rcptData(p).kind,onclick:()=>receiptModal(p)}))))}}),h('button',{class:'btn ghost',type:'button',text:'Book',onclick:()=>{closeModal();bookingForm({who:c.name})}}),h('button',{class:'btn ghost',type:'button',text:'New sale',onclick:()=>{closeModal();saleForm({who:c.name})}}),h('button',{class:'btn ghost',type:'button',text:'Add follow-up',onclick:()=>{closeModal();fuForm(c.id)}})]),
   h('h3',{text:'History'}),tbl(['Date','Type','Detail'],ev.map(e=>[fdy(e[0]),e[1],e[2]]),{empty:emptyBox('No history yet','Inquiries, bookings, sales and messages appear here.')})]);
  modal(c.name,body,true)}
 function followTable(list){return tbl(['Due','Client','For','Status','Assigned',''],list.map(f=>{const c=IDX.contact[f.contactId];return [fdy(f.due),c?c.name:'?',TPL_LABEL[f.type],pill(fuState(f),fuState(f)==='Overdue'?'bad':fuState(f)==='Due today'?'warn':''),f.assigned||'—',h('span',{class:'act'},[h('button',{class:'btn sm',text:'WhatsApp',onclick:()=>waPick(c)}),' ',h('button',{class:'btn ghost sm',text:'Done',onclick:()=>fuDone(f)})])]}),{empty:emptyBox('No follow-ups in this list','Log an inquiry and a follow-up is scheduled for you.')})}
@@ -2983,6 +2985,12 @@ function viewClients(){const k=sub.clients||'all',q=(sub.q_c||'').toLowerCase(),
   {empty:emptyBox(D.contacts.length?'No match':'No clients yet','Add your first client, or paste your existing list with Import clients.',h('button',{class:'btn',text:'Import clients',onclick:importForm}))}));
  return w}
 
+function deleteClient(c){const t=todayStr(),up=D.appts.filter(a=>a.contactId===c.id&&a.date>=t&&['Confirmed','Pending confirmation'].includes(a.status)),sl=D.sales.filter(s=>s.contactId===c.id).length;
+ if(up.length){toast(c.name+' has '+up.length+' upcoming booking'+(up.length>1?'s':'')+'. Cancel or move them first.',true);return}
+ confirmBox('Delete '+c.name+'? Their inquiries and follow-ups are removed.'+(sl?' Their '+sl+' past sale'+(sl>1?'s':'')+' and payments stay in the books and show as "Walk-in".':'')+' This cannot be undone.',async()=>{
+  try{for(const f of D.followups.filter(x=>x.contactId===c.id))await rm('followups',f.id);for(const i of D.inq.filter(x=>x.contactId===c.id))await rm('inq',i.id);await rm('contacts',c.id);audit('Client deleted',c.name);toast('Client deleted')}
+  catch(e){toast('Could not delete: '+(e&&e.message||'try again'),true)}},'Delete client')}
+
 /* ================= Bookings ================= */
 function nextSaleNo(){const n=Math.max(0,...D.sales.map(s=>+(String(s.no||'').replace(/\D/g,''))||0));return 'S-'+String(n+1).padStart(4,'0')}
 const acctOpts=()=>D.accounts.filter(a=>!a.archived).map(a=>[a.id,a.name]);
@@ -2998,24 +3006,22 @@ function bookingForm(pre){pre=pre||{};let A=null;
  A=openForm({title:'New booking',cta:'Save booking',done:'Booking saved',wide:true,note:'A booking is firm when it has a day, time, stylist and deposit. Overlaps for the same stylist are blocked.',fields:[
   {k:'who',l:'Client',t:'contact',req:true,full:true,v:pre.who||'',hint:'Pick an existing client or type a new name'},{k:'phone',l:'Phone (new client)',t:'tel',v:pre.phone},
   {k:'service',l:'Service',t:'sel',o:svcOpts(),v:pre.service||''},{k:'staff',l:'Stylist',t:'sel',o:staffOpts().concat([['Any','Any free stylist']]),v:S.staff[0]},{k:'date',l:'Day',t:'date',v:pre.date||todayStr()},{k:'time',l:'Start time',t:'time',v:pre.time||'09:00'},
-  {k:'dur',l:'Length (minutes)',t:'num',v:S.defDur},{k:'price',l:'Quoted price (KSh)',t:'num'},{k:'deposit',l:'Deposit received (KSh)',t:'num'},{k:'method',l:'Deposit method',t:'sel',o:S.methods},{k:'acct',l:'Deposit paid into',t:'sel',o:acctOpts(),v:defAcct('M-Pesa')},
+  {k:'dur',l:'Length (minutes)',t:'num',v:S.defDur},{k:'price',l:'Quoted price (KSh)',t:'num'},{k:'deposit',l:'Deposit received (KSh)',t:'num'},{k:'method',l:'Deposit method',t:'sel',o:S.methods},
   {k:'source',l:'How she found us',t:'sel',o:srcOpts(),v:pre.source||''},{k:'status',l:'Status',t:'sel',o:['Pending confirmation','Confirmed'],v:'Confirmed'},
   {k:'free',l:'Free start times',full:true,custom:()=>({el:freeEl,get:()=>''})},{k:'notes',l:'Notes',t:'ta',full:true}],
   onChange:(k,api)=>{if(k==='who'){const c=findContact(api.get('who'));if(c){api.set('phone',c.phone||'');if(c.source&&!api.get('source'))api.set('source',c.source)}}
    if(k==='service'){const s=IDX.service[api.get('service')];if(s){api.set('dur',s.dur||S.defDur);api.set('price',s.promo||s.price||'')}}
-   if(k==='method')api.set('acct',defAcct(api.get('method')));
    if(['service','date','staff','dur','init'].includes(k))refresh()},
   submit:async v=>{if(!v.who.trim())return 'Add the client.';const dur=rd(v.dur)||S.defDur,start=tmin(v.time);
    const w=checkWindow(v.date,start,dur);if(w)return w;
    let staff=v.staff;if(staff==='Any'){staff=S.staff.find(s=>!clashFor(v.date,start,dur,s));if(!staff)return 'No stylist is free at that time.'}
    const c=clashFor(v.date,start,dur,staff);if(c)return 'Clashes with another booking for '+staff+' ('+mstr(c.s)+' to '+mstr(c.e)+', buffer included). Pick another time or stylist.';
-   if(v.deposit>0&&!v.acct)return 'Choose the account the deposit went into. Add one in Finance Tracker first.';
    const cid=await ensureContact(v.who,v.phone,v.source,'Booked');
    const ct=D.contacts.find(x=>x.id===cid);if(ct&&!ct.source&&v.source)await patch('contacts',cid,{source:v.source});await patch('contacts',cid,{stage:'Booked',lastContact:todayStr()});
    const a={id:uid(),contactId:cid,serviceId:v.service,staff:staff,date:v.date,start:start,dur:dur,price:v.price,deposit:v.deposit,status:v.status,source:v.source,notes:v.notes,createdBy:'dashboard'};
    const sv=IDX.service[v.service];
    if(v.deposit>0||v.price>0){const sid=uid();a.saleId=sid;await put('sales',{id:sid,no:nextSaleNo(),date:v.date,contactId:cid,lines:[{kind:'service',refId:v.service,name:sv?sv.name:'Appointment',qty:1,unit:rd(v.price)}],discount:0,refund:0,adj:[],channel:'',pending:true,apptId:a.id,notes:''});
-    if(v.deposit>0)offerReceipt(await put('payments',{date:todayStr(),amount:rd(v.deposit),method:v.method,accountId:v.acct,saleId:sid,ref:'',notes:'Booking deposit',rno:nextRcptNo()}))}
+    if(v.deposit>0)offerReceipt(await put('payments',{date:todayStr(),amount:rd(v.deposit),method:v.method,accountId:defAcct(v.method),saleId:sid,ref:'',notes:'Booking deposit',rno:nextRcptNo()}))}
    await put('appts',a);syncSlot(a);audit('Booking created',cName(cid)+' '+v.date+' '+v.time);
    if(v.deposit<=0)toast('Saved without a deposit. Chase it before the day.')}})}
 function setStatus(a,st){if(st==='Cancelled'||st==='No-show')return cancelFlow(a,st);if(st==='Completed')return completeFlow(a);
@@ -3030,15 +3036,14 @@ function cancelFlow(a,st){const s=a.saleId&&D.sales.find(x=>x.id===a.saleId),pai
 function completeFlow(a){const sv=IDX.service[a.serviceId],s=a.saleId&&D.sales.find(x=>x.id===a.saleId),paid=s?salePaid(s):0;
  openForm({title:'Complete appointment',cta:'Complete and record sale',done:'Appointment completed',note:cName(a.contactId)+' · '+(sv?sv.name:'Service')+' · '+fd(a.date),fields:[
   {k:'price',l:'Final price (KSh)',t:'num',v:a.price||0},{k:'discount',l:'Discount (KSh)',t:'num'},{k:'channel',l:'Sales channel',t:'sel',o:S.channels,v:'WhatsApp'},
-  {k:'pay',l:'Paid now (KSh)',t:'num',v:Math.max(0,(a.price||0)-paid),hint:paid?'Deposit already paid: '+money(paid):''},{k:'method',l:'Method',t:'sel',o:S.methods},{k:'acct',l:'Into account',t:'sel',o:acctOpts(),v:defAcct('M-Pesa')},
+  {k:'pay',l:'Paid now (KSh)',t:'num',v:Math.max(0,(a.price||0)-paid),hint:paid?'Deposit already paid: '+money(paid):''},{k:'method',l:'Method',t:'sel',o:S.methods},
   {k:'use',l:'Deduct standard products from stock',t:'chk',v:S.autoConsume&&sv&&(sv.recipe||[]).length>0}],
-  onChange:(k,api)=>{if(k==='method')api.set('acct',defAcct(api.get('method')))},
-  submit:async v=>{if(v.pay>0&&!v.acct)return 'Choose the account the payment went into.';
+    submit:async v=>{
    if(v.use&&sv){for(const r of sv.recipe||[]){const p=IDX.product[r.productId];if(p&&S.noNeg&&(IDX.qty[p.id]||0)<r.qty)return 'Not enough '+p.name+' in stock ('+(IDX.qty[p.id]||0)+' left). Receive stock first or untick the box.'}}
    const lines=[{kind:'service',refId:a.serviceId,name:sv?sv.name:'Service',qty:1,unit:rd(v.price)}];let sid=a.saleId;
    if(s)await patch('sales',s.id,{lines:lines,discount:rd(v.discount),pending:false,channel:v.channel,date:a.date});
    else{sid=uid();await put('sales',{id:sid,no:nextSaleNo(),date:a.date,contactId:a.contactId,lines:lines,discount:rd(v.discount),refund:0,adj:[],channel:v.channel,pending:false,apptId:a.id,notes:''})}
-   if(v.pay>0)offerReceipt(await put('payments',{date:todayStr(),amount:rd(v.pay),method:v.method,accountId:v.acct,saleId:sid,ref:'',notes:'',rno:nextRcptNo()}));
+   if(v.pay>0)offerReceipt(await put('payments',{date:todayStr(),amount:rd(v.pay),method:v.method,accountId:defAcct(v.method),saleId:sid,ref:'',notes:'',rno:nextRcptNo()}));
    if(v.use&&sv&&!a.consumed){for(const r of sv.recipe||[]){const p=IDX.product[r.productId];if(p)await put('moves',{date:a.date,productId:p.id,type:'Consumption',qty:-r.qty,unitCost:prodAvg(p),note:(sv.name)+' for '+cName(a.contactId),apptId:a.id})}}
    await patch('appts',a.id,{status:'Completed',saleId:sid,consumed:!!v.use});syncSlot(Object.assign({},a,{status:'Completed'}));
    await patch('contacts',a.contactId,{lastContact:a.date});audit('Appointment completed',cName(a.contactId)+' '+a.date)}})}
@@ -3137,29 +3142,28 @@ function saleForm(pre){pre=pre||{};let ack=false;
  openForm({title:'New sale',cta:'Record sale',done:'Sale recorded',wide:true,note:'A sale is recorded once, however many payments follow. Source and payment method are kept separate from the sales channel.',fields:[
   {k:'who',l:'Client (leave empty for a walk-in)',t:'contact',v:pre.who||'',full:true},{k:'date',l:'Date',t:'date',v:todayStr()},{k:'channel',l:'Sales channel',t:'sel',o:S.channels,v:'WhatsApp'},
   {k:'lines',l:'Items',full:true,custom:()=>linesEditor(pre.lines)},{k:'discount',l:'Discount (KSh)',t:'num'},{k:'campaignId',l:'Campaign',t:'sel',o:campOpts()},
-  {hr:'Payment received now'},{k:'pay',l:'Amount paid (KSh)',t:'num'},{k:'method',l:'Method',t:'sel',o:S.methods},{k:'acct',l:'Into account',t:'sel',o:acctOpts(),v:defAcct('M-Pesa')},{k:'ref',l:'Transaction reference',hint:'e.g. the M-Pesa code'},{k:'notes',l:'Notes',full:true}],
-  onChange:(k,api)=>{if(k==='method')api.set('acct',defAcct(api.get('method')))},
-  submit:async v=>{const L=v.lines;if(!L.length)return 'Add at least one item with a price.';if(L.some(l=>!l.unit&&l.unit!==0))return 'Every line needs a price.';
+  {hr:'Payment received now'},{k:'pay',l:'Amount paid (KSh)',t:'num'},{k:'method',l:'Method',t:'sel',o:S.methods},{k:'ref',l:'Transaction reference',hint:'e.g. the M-Pesa code'},{k:'notes',l:'Notes',full:true}],
+    submit:async v=>{const L=v.lines;if(!L.length)return 'Add at least one item with a price.';if(L.some(l=>!l.unit&&l.unit!==0))return 'Every line needs a price.';
    const gross=sum(L,l=>l.qty*l.unit);if(v.discount>gross)return 'The discount is larger than the sale.';
-   const net=gross-rd(v.discount);if(v.pay>0&&!v.acct)return 'Choose the account that received the money.';if(v.pay<0)return 'Payment cannot be negative.';
+   const net=gross-rd(v.discount);if(v.pay<0)return 'Payment cannot be negative.';
    for(const l of L)if(l.kind==='product'){const p=IDX.product[l.refId];if(p&&S.noNeg&&(IDX.qty[p.id]||0)<l.qty)return 'Not enough '+p.name+' in stock ('+(IDX.qty[p.id]||0)+' left).'}
    if(v.pay>net&&!ack){ack=true;return 'The payment is more than the sale total. Press again to keep it as a credit.'}
    const cid=v.who.trim()?await ensureContact(v.who,'',pre.source||'',''):'';const key=cid+'|'+v.date+'|'+gross;
    if(lastSale.key===key&&Date.now()-lastSale.at<45000&&!ack){ack=true;return 'This looks the same as the sale you just saved. Press again only if it is a different sale.'}
    const sid=uid();await put('sales',{id:sid,no:nextSaleNo(),date:v.date,contactId:cid,lines:L,discount:rd(v.discount),refund:0,adj:[],channel:v.channel,campaignId:v.campaignId,notes:v.notes});lastSale={key:key,at:Date.now()};
    for(const l of L)if(l.kind==='product'){const p=IDX.product[l.refId];if(p)await put('moves',{date:v.date,productId:p.id,type:'Sale',qty:-l.qty,unitCost:prodAvg(p),note:'Sold to '+(cid?cName(cid):'walk-in'),saleId:sid})}
-   if(v.pay>0)offerReceipt(await put('payments',{date:v.date,amount:rd(v.pay),method:v.method,accountId:v.acct,saleId:sid,ref:v.ref,notes:'',rno:nextRcptNo()}));
+   if(v.pay>0)offerReceipt(await put('payments',{date:v.date,amount:rd(v.pay),method:v.method,accountId:defAcct(v.method),saleId:sid,ref:v.ref,notes:'',rno:nextRcptNo()}));
    if(cid){const c=IDX.contact[cid];if(c)await patch('contacts',cid,{lastContact:v.date,stage:'Booked'})}audit('Sale recorded',nextSaleNo())}})}
 function payForm(sale){let ack=false;const open=D.sales.filter(s=>isSale(s)&&saleBal(s)>0||s.pending);
  openForm({title:'Record payment',cta:'Record payment',done:'Payment recorded',fields:[
   {k:'sale',l:'Applies to',t:'sel',o:[['','No sale: other income']].concat(open.map(s=>[s.id,s.no+' · '+cName(s.contactId)+' · owes '+money(saleBal(s))])),v:sale?sale.id:'',full:true},{k:'date',l:'Date',t:'date',v:todayStr()},{k:'amount',l:'Amount (KSh)',t:'num',v:sale?Math.max(0,saleBal(sale)):0},
-  {k:'method',l:'Method',t:'sel',o:S.methods},{k:'acct',l:'Into account',t:'sel',o:acctOpts(),v:defAcct('M-Pesa')},{k:'ref',l:'Transaction reference'},{k:'notes',l:'Notes',full:true}],
-  onChange:(k,api)=>{if(k==='method')api.set('acct',defAcct(api.get('method')));if(k==='sale'){const s=D.sales.find(x=>x.id===api.get('sale'));if(s)api.set('amount',Math.max(0,saleBal(s)))}},
-  submit:async v=>{if(!(v.amount>0))return 'Enter an amount above zero.';if(!v.acct)return 'Choose the account. Add one in Finance Tracker first.';
+  {k:'method',l:'Method',t:'sel',o:S.methods},{k:'ref',l:'Transaction reference'},{k:'notes',l:'Notes',full:true}],
+  onChange:(k,api)=>{if(k==='sale'){const s=D.sales.find(x=>x.id===api.get('sale'));if(s)api.set('amount',Math.max(0,saleBal(s)))}},
+  submit:async v=>{if(!(v.amount>0))return 'Enter an amount above zero.';
    if(v.ref&&D.payments.some(p=>p.ref&&p.ref.toLowerCase()===v.ref.trim().toLowerCase()))return 'A payment with this reference is already recorded. It was not saved again.';
    if(D.payments.some(p=>p.saleId===v.sale&&p.amount===rd(v.amount)&&p.method===v.method&&p.date===v.date&&Date.now()-(p.ts||0)<60000))return 'The same payment was recorded a moment ago. It was not saved again.';
    const s=D.sales.find(x=>x.id===v.sale);if(s&&!s.pending&&v.amount>saleBal(s)&&!ack){ack=true;return 'This is more than the '+money(saleBal(s))+' still owed. Press again to record it as a credit.'}
-   offerReceipt(await put('payments',{date:v.date,amount:rd(v.amount),method:v.method,accountId:v.acct,saleId:v.sale,ref:v.ref.trim(),notes:v.notes,rno:nextRcptNo()}))}})}
+   offerReceipt(await put('payments',{date:v.date,amount:rd(v.amount),method:v.method,accountId:defAcct(v.method),saleId:v.sale,ref:v.ref.trim(),notes:v.notes,rno:nextRcptNo()}))}})}
 function adjForm(s){openForm({title:'Adjust '+s.no,cta:'Add adjustment',done:'Adjustment recorded',note:'Sales are never edited in place. An adjustment keeps the history. Current total '+money(saleNet(s))+', paid '+money(salePaid(s))+'.',fields:[
   {k:'type',l:'Type',t:'sel',o:['Discount','Refund','Correction (increase)'],full:true},{k:'amount',l:'Amount (KSh)',t:'num',req:true},{k:'reason',l:'Reason',req:true,full:true},{k:'payout',l:'Money returned to the client now',t:'chk'},{k:'acct',l:'Paid out from',t:'sel',o:acctOpts(),v:defAcct('M-Pesa')}],
   submit:async v=>{const sign=v.type==='Correction (increase)'?-1:1;if(sign===1&&v.amount>saleNet(s))return 'That is more than the sale total.';

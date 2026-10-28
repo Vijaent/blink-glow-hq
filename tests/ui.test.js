@@ -1,7 +1,7 @@
 // Browser test of the finished index.html with a fake Supabase (no network). Needs: npm i playwright; CHROMIUM_PATH optional.
 const { chromium } = require('playwright');
 const fs = require('fs');
-const INDEX = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8').replace("(function(){\n'use strict';", "(function(){\n'use strict';window.__T={get:()=>({put,nextRcptNo,nextSaleNo,rcptData,rcptHtml,receiptModal,closeModal,todayStr,D})};");
+const INDEX = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8').replace("(function(){\n'use strict';", "(function(){\n'use strict';window.__T={get:()=>({payForm,deleteClient,bookingForm,saleForm,put,nextRcptNo,nextSaleNo,rcptData,rcptHtml,receiptModal,closeModal,todayStr,D})};");
 const FAKE = fs.readFileSync(__dirname + '/fake_supabase.js', 'utf8');
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (c || x === undefined ? '' : ' | ' + JSON.stringify(x))); };
@@ -191,6 +191,17 @@ const CFG = { biz: 'Blink & Glow', tz: 'Africa/Nairobi', phone: '0712345678', ho
     ok(who + ': receipt preview opens with Print and WhatsApp buttons', !!(await pg.$('#modalroot iframe')) && !!(await pg.$('button:has-text("Print / Save as PDF")')) && !!(await pg.$('button:has-text("WhatsApp the client")')));
     await pg.keyboard.press('Escape'); await pg.evaluate(() => window.__T.get().closeModal());
   }
+  for (const [who, pg] of [['owner', ow], ['admin', ad]]) {
+    for (const f of ['payForm', 'bookingForm', 'saleForm']) {
+      await pg.evaluate(f => window.__T.get()[f](), f); await pg.waitForTimeout(250);
+      ok(who + ': ' + f + ' has no account field', !/Into account|Deposit paid into/.test(await pg.textContent('#modalroot')));
+      await pg.evaluate(() => window.__T.get().closeModal());
+    }
+  }
+  await ow.evaluate(async () => { const T = window.__T.get(); await T.put('contacts', { name: 'Delete Me', phone: '0799000111' }); });
+  await ow.evaluate(() => { const T = window.__T.get(); T.deleteClient(T.D.contacts.find(c => c.name === 'Delete Me')); }); await ow.waitForTimeout(200);
+  await ow.click('#modalroot button:has-text("Delete client")'); await ow.waitForTimeout(500);
+  ok('Owner can delete a client', await ow.evaluate(() => !window.__T.get().D.contacts.some(c => c.name === 'Delete Me')));
   const nx = await login('none');
   ok('A login without access sees only a waiting screen, no menu and no data', /Waiting for access/.test(await nx.textContent('body')) && !(await nx.$('.nav')) && !/Wanjiru/.test(await nx.evaluate(() => document.body.innerText)));
   ok('The waiting screen offers Check again and Sign out', !!(await nx.$('button:has-text("Check again")')) && !!(await nx.$('button:has-text("Sign out")')));
