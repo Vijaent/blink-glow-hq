@@ -3399,6 +3399,28 @@ async function loadUsers(){UST.loading=true;try{const r=await window.bghq.sb.rpc
 async function setAccess(email,role){try{const x=await window.bghq.sb.rpc('bg_set_role',{p_email:email,p_role:role});if(x.error)throw x.error;toast(role==='none'?'Access removed for '+email:'Access updated for '+email)}
  catch(err){const m=String(err&&err.message||err);toast(/last_owner/.test(m)?'There must always be at least one Owner.':/cannot_remove_self/.test(m)?'You cannot remove your own access.':'Could not change access. Try again.',true)}
  await loadUsers()}
+
+const genPw=()=>{const c='abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';let o='';const a=new Uint32Array(10);crypto.getRandomValues(a);a.forEach(n=>{o+=c[n%c.length]});return o};
+async function callUsers(body){try{const r=await window.bghq.sb.functions.invoke('manage-users',{body});
+  if(r.error){let m='Could not reach the server. Try again.';try{const j=await r.error.context.json();if(j&&j.message)m=j.message}catch(e){}return {ok:false,message:m}}
+  return r.data&&r.data.ok?{ok:true}:{ok:false,message:(r.data&&r.data.message)||'Something went wrong.'}}catch(e){return {ok:false,message:'Could not reach the server. Try again.'}}}
+function loginText(email,pw){return 'Blink & Glow HQ\nSign in: '+String(pubBase()).replace(/\/$/,'')+'\nEmail: '+email+'\nPassword: '+pw+'\nPlease keep this private. You can change the password later with “Forgot your password?” on the sign-in page.'}
+function addPersonCard(){const st={role:'admin'};
+ const em=h('input',{id:'np-email',type:'email',placeholder:'name@example.com',autocomplete:'off'}),pw=h('input',{id:'np-pw',type:'text',autocomplete:'off',value:genPw()});
+ const rl=h('select',{id:'np-role'},[['admin','Admin: day-to-day only'],['owner','Owner: everything']].map(o=>h('option',{value:o[0],text:o[1]})));
+ const err=h('div',{class:'err',role:'alert'}),btn=h('button',{class:'btn',type:'button',text:'Create login'});
+ btn.onclick=async()=>{err.textContent='';const email=em.value.trim().toLowerCase(),pass=pw.value;if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){err.textContent='Enter a valid email address.';return}if(pass.length<8){err.textContent='The password needs at least 8 characters.';return}
+  btn.disabled=true;btn.textContent='Creating…';const r=await callUsers({action:'create',email,password:pass,role:rl.value});btn.disabled=false;btn.textContent='Create login';
+  if(!r.ok){err.textContent=r.message;return}
+  toast('Login created for '+email);credModal('Login created',email,pass);await loadUsers()};
+ return card('Add a new person','Creates their login and gives them access in one step. They can sign in straight away.',h('div',{class:'fgrid'},[h('label',{},['Email',em]),h('label',{},['Temporary password',h('span',{class:'row'},[pw,h('button',{class:'btn ghost sm',type:'button',text:'New password',onclick:()=>{pw.value=genPw()}})])]),h('label',{},['Access',rl]),h('div',{class:'full',style:'display:flex;gap:10px;align-items:center;flex-wrap:wrap'},[btn,err])]))}
+function credModal(title,email,pass){const t=loginText(email,pass);
+ modal(title,h('div',{style:'display:flex;flex-direction:column;gap:10px'},[h('p',{style:'margin:0',text:'Share these details privately. The password is not shown again.'}),h('pre',{style:'white-space:pre-wrap;background:var(--soft,#f4f6f5);padding:10px;border-radius:10px;margin:0;font-size:13px',text:t}),
+  h('div',{class:'row'},[h('button',{class:'btn',type:'button',text:'Copy details',onclick:async()=>{try{await navigator.clipboard.writeText(t);toast('Copied')}catch(e){toast('Select the text and copy',true)}}}),h('a',{class:'btn ghost',target:'_blank',rel:'noopener',href:'https://wa.me/?text='+encodeURIComponent(t),text:'Send by WhatsApp'}),h('button',{class:'btn ghost',type:'button',text:'Done',onclick:closeModal})])]))}
+function resetPwModal(email){const pw=h('input',{id:'rp-pw',type:'text',value:genPw(),autocomplete:'off'}),err=h('div',{class:'err',role:'alert'}),btn=h('button',{class:'btn',type:'button',text:'Set password'});
+ btn.onclick=async()=>{err.textContent='';if(pw.value.length<8){err.textContent='At least 8 characters.';return}btn.disabled=true;const r=await callUsers({action:'reset_password',email,password:pw.value});btn.disabled=false;if(!r.ok){err.textContent=r.message;return}const p=pw.value;closeModal();toast('Password changed for '+email);credModal('New password set',email,p)};
+ modal('Set a new password for '+email,h('div',{style:'display:flex;flex-direction:column;gap:10px'},[h('label',{},['New password',pw]),h('div',{class:'row'},[btn,h('button',{class:'btn ghost',type:'button',text:'New password',onclick:()=>{pw.value=genPw()}}),h('button',{class:'btn ghost',type:'button',text:'Cancel',onclick:closeModal})]),err]))}
+function deleteLogin(email){confirmBox('Delete the login for '+email+'? They can no longer sign in. Their past work stays in the records.',async()=>{const r=await callUsers({action:'delete',email});if(!r.ok)toast(r.message,true);else toast('Login deleted');await loadUsers()},'Delete login')}
 function viewUsers(){const w=h('div',{class:'wrap'});
  if(!SA||!window.bghq||!isOwner()){w.appendChild(emptyBox('Owner only','Only an Owner can manage who uses Blink & Glow HQ.'));return w}
  if(UST.rows===null&&!UST.loading)loadUsers();
@@ -3408,16 +3430,12 @@ function viewUsers(){const w=h('div',{class:'wrap'});
  if(UST.err)w.appendChild(h('div',{class:'banner'},[h('p',{text:UST.err})]));
  if(waiting.length)w.appendChild(h('div',{class:'banner'},[h('p',{text:waiting.length+(waiting.length===1?' person has':' people have')+' a login but no access yet. Choose Admin or Owner for them below.'})]));
  const pillFor=r=>r==='owner'?pill('Owner','green'):r==='admin'?pill('Admin','good'):pill('Waiting for access','warn');
- w.appendChild(card('People with a login','Everyone who can sign in appears here. Nobody can see anything until you give them access.',tbl(['Email','Status','Last sign-in','Access'],rows.map(u=>{
+ w.appendChild(card('People with a login','Everyone who can sign in appears here. Nobody can see anything until you give them access.',tbl(['Email','Status','Last sign-in','Access',''],rows.map(u=>{
    const sel=h('select',{'aria-label':'Access for '+u.email,style:'width:auto',onchange:e=>setAccess(u.email,e.target.value)},[['owner','Owner: everything'],['admin','Admin: day-to-day only'],['none','No access']].map(o=>h('option',{value:o[0],text:o[1]})));
    sel.value=u.role||'none';
-   return [u.email+(u.email===myEmail?' (you)':''),pillFor(u.role),u.last_sign_in_at?fdy(String(u.last_sign_in_at).slice(0,10)):'Never',sel]}),{empty:UST.rows===null?h('p',{class:'hint',text:'Loading…'}):emptyBox('No logins yet','Create the first login in Supabase, then press Refresh list.')})));
- w.appendChild(card('Add a new person','A person needs a login first, then you give them access here.',h('ol',{style:'margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px'},[
-  h('li',{text:'Open Supabase, then Authentication, then Users, then Add user, then Create new user.'}),
-  h('li',{text:'Type their email and a password, tick Auto Confirm User, and create it. Give them the password privately.'}),
-  h('li',{text:'Come back here and press Refresh list. Their email appears as Waiting for access.'}),
-  h('li',{text:'Choose Admin (day-to-day work) or Owner (everything) in the Access column.'}),
-  h('li',{text:'Send them the sign-in link. They sign in with that email and password.'})])));
+   const acts=h('span',{class:'act'},[h('button',{class:'btn ghost sm',type:'button',text:'Set password',onclick:()=>resetPwModal(u.email)}),u.email===myEmail?null:' ',u.email===myEmail?null:h('button',{class:'btn danger sm',type:'button',text:'Delete login',onclick:()=>deleteLogin(u.email)})]);
+   return [u.email+(u.email===myEmail?' (you)':''),pillFor(u.role),u.last_sign_in_at?fdy(String(u.last_sign_in_at).slice(0,10)):'Never',sel,acts]}),{empty:UST.rows===null?h('p',{class:'hint',text:'Loading…'}):emptyBox('No logins yet','Add the first person below.')})));
+ w.appendChild(addPersonCard());
  const Y='Yes',N='—';
  w.appendChild(card('What each kind of access can do',null,tbl(['','Owner','Admin'],[
   ['Clients, inquiries and follow-ups',Y,Y],['Bookings, requests and the booking link',Y,Y],['Record sales and payments',Y,Y],['Record stock used',Y,Y],

@@ -41,6 +41,7 @@
   window.supabase={createClient:()=>({
     from:()=>qb(),
     rpc:async(name,args)=>{DB.log.push(['rpc',name]);try{return{data:rpcs[name](args||{}),error:null}}catch(e){return{data:null,error:{message:String(e)}}}},
+    functions:{invoke:async(name,{body})=>{DB.log.push(['fn',name,body.action,body.email,body.role,body.password]);if(body.action==='create'){window.__TEAM=(window.__TEAM||[{email:'kate@test',role:'owner',last_sign_in_at:null},{email:'amy@test',role:'admin',last_sign_in_at:null},{email:'new@test',role:'none',last_sign_in_at:null}]).concat([{email:body.email,role:body.role,last_sign_in_at:null}])}return{data:{ok:true},error:null}}},
     channel:()=>{const c={on(){return c},subscribe(cb){setTimeout(()=>cb&&cb('SUBSCRIBED'),10);return c}};return c},
     auth:{
       async getSession(){return{data:{session:DB.session}}},

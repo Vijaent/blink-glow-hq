@@ -16,7 +16,7 @@ Owner of the build: Victor Mwai (VIJA Enterprises). Client: Blink and Glow (owne
 - WhatsApp is click-to-chat only. Do not claim a message was sent.
 
 ## Roles
-- Two roles in `public.team_roles`: `owner`, `admin`. A signed-in user who is not listed has role `none` and sees nothing (the app shows a waiting screen). The app asks `bg_my_role()` at sign-in and fails closed to `none`. The owner-only **Users** page lists every login (`bg_team()`) and sets access with `bg_set_role(email, 'owner'|'admin'|'none')`; creating the login itself is done in Supabase (Authentication, Users).
+- Two roles in `public.team_roles`: `owner`, `admin`. A signed-in user who is not listed has role `none` and sees nothing (the app shows a waiting screen). The app asks `bg_my_role()` at sign-in and fails closed to `none`. The owner-only **Users** page lists every login (`bg_team()`) and sets access with `bg_set_role(email, 'owner'|'admin'|'none')`; logins are created, reset and deleted by the owner-only Edge Function `manage-users` (verify_jwt on, checks `bg_my_role()='owner'`, uses the platform-injected service key; never put that key in the repo). Source in `supabase/functions/manage-users/index.ts`; keep the deployed copy in sync.
 - Enforcement is in the database (`bg_allowed()` + row-level-security policies + `sales_guard` trigger), not only in the screens. When adding a new collection, decide whether Admin may read/write it and update `bg_allowed()` in `supabase/schema.sql`, the live project and the tests.
 - Owner-only screens: Finance Tracker, Services, Marketing, Reports, Users, Settings. Admin gets a simpler Overview with no revenue or profit.
 - Booking links come from `publicUrl` in `config.js`; the Settings field for it is read-only.
