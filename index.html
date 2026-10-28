@@ -3178,7 +3178,11 @@ function adjForm(s){openForm({title:'Adjust '+s.no,cta:'Add adjustment',done:'Ad
   submit:async v=>{const sign=v.type==='Correction (increase)'?-1:1;if(sign===1&&v.amount>saleNet(s))return 'That is more than the sale total.';
    await patch('sales',s.id,{adj:(s.adj||[]).concat([{date:todayStr(),type:v.type,amount:sign*rd(v.amount),reason:v.reason}])});
    if(v.payout&&v.type==='Refund'){await put('payments',{date:todayStr(),amount:-rd(v.amount),method:'Refund',accountId:((D.payments.filter(p=>p.saleId===s.id&&p.amount>0).pop()||{}).accountId)||defAcct('M-Pesa'),saleId:s.id,ref:'',notes:'Refund: '+v.reason})}audit('Sale adjusted',s.no+' '+v.type)}})}
-function voidSale(s){if(salePaid(s)>0){toast('Refund the payments first, then void the sale',true);return}confirmBox('Void '+s.no+'? It stays in the history but is removed from totals.',async()=>{await patch('sales',s.id,{void:true,voidReason:'Voided by user'});audit('Sale voided',s.no);toast('Sale voided')},'Void sale')}
+function voidSale(s){const paid=salePaid(s);
+ openForm({title:'Void '+s.no,cta:'Void sale',done:'Sale voided',note:'Voiding removes this sale from the totals. It stays in the history.'+(paid>0?' The '+money(paid)+' recorded against it is reversed automatically.':''),fields:[{k:'reason',l:'Why is it being voided?',t:'ta',req:true,full:true}],
+  submit:async v=>{const why=v.reason.trim();if(why.length<3)return 'Write a short reason.';
+   for(const p of D.payments.filter(x=>x.saleId===s.id&&x.amount>0&&!x.reversed)){await put('payments',{date:todayStr(),amount:-p.amount,method:'Void',accountId:p.accountId||'',saleId:s.id,ref:p.rno||'',notes:'Voided: '+why,reverses:p.id})}
+   await patch('sales',s.id,{void:true,voidReason:why});audit('Sale voided',s.no+': '+why)}})}
 function viewSales(){const w=h('div',{class:'wrap'}),R=range(PER.k,PER.a,PER.b),q=(sub.q_s||'').toLowerCase(),fs=sub.s_ss||'all';
  const all=D.sales.slice().sort((a,b)=>a.date<b.date?1:-1),inP=all.filter(s=>inR(s.date,R.a,R.b));
  const valid=inP.filter(isSale);
@@ -3260,6 +3264,7 @@ function rcptData(p){const s=D.sales.find(x=>x.id===p.saleId),c=s&&IDX.contact[s
  const before=sum(prior,x=>x.amount),total=s?saleNet(s):0,after=before+p.amount,bal=s?total-after:0;
  let kind='Payment receipt',stamp='PAYMENT RECEIVED';
  if(s){if(total>0&&bal<=0){kind='Full payment receipt';stamp='PAID IN FULL'}else if(!prior.length){kind='Deposit receipt';stamp='DEPOSIT RECEIVED'}else{kind='Part payment receipt';stamp='PART PAYMENT RECEIVED'}}
+ if(s&&s.void)stamp='VOID';
  return {p:p,s:s,c:c,a:a,prior:prior,before:before,total:total,bal:Math.max(0,bal),kind:kind,stamp:stamp,no:rcptNo(p)}}
 function rcptHtml(p){const r=rcptData(p),s=r.s,biz=(typeof pubBiz==='function'?pubBiz():S.biz),G='#328566',lines=s?(s.lines||[]):[];
  const row=(l,v,b)=>'<tr><td'+(b?' class="b"':'')+'>'+l+'</td><td class="r'+(b?' b':'')+'">'+v+'</td></tr>';

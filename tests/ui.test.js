@@ -1,7 +1,7 @@
 // Browser test of the finished index.html with a fake Supabase (no network). Needs: npm i playwright; CHROMIUM_PATH optional.
 const { chromium } = require('playwright');
 const fs = require('fs');
-const INDEX = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8').replace("(function(){\n'use strict';", "(function(){\n'use strict';window.__T={get:()=>({apptSvcs,svcLines,IDX,payForm,deleteClient,bookingForm,saleForm,put,nextRcptNo,nextSaleNo,rcptData,rcptHtml,receiptModal,closeModal,todayStr,D})};");
+const INDEX = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8').replace("(function(){\n'use strict';", "(function(){\n'use strict';window.__T={get:()=>({voidSale,apptSvcs,svcLines,IDX,payForm,deleteClient,bookingForm,saleForm,put,nextRcptNo,nextSaleNo,rcptData,rcptHtml,receiptModal,closeModal,todayStr,D})};");
 const FAKE = fs.readFileSync(__dirname + '/fake_supabase.js', 'utf8');
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (c || x === undefined ? '' : ' | ' + JSON.stringify(x))); };
@@ -215,6 +215,17 @@ const CFG = { biz: 'Blink & Glow', tz: 'Africa/Nairobi', phone: '0712345678', ho
   const sl = await ow.evaluate(() => { const T = window.__T.get(), l = T.D.services.filter(x => /^Test /.test(x.name)); const a = { serviceId: l[0].id, extra: [{ serviceId: l[1].id }] }; return { n: T.apptSvcs(a).length, same: T.svcLines(a, 7500).map(x => x.unit), disc: T.svcLines(a, 7000).map(x => x.unit) }; });
   ok('Multi-service sale lines: one line per service, total follows the price', sl.n === 2 && sl.same.join() === '5000,2500' && sl.disc.reduce((t, x) => t + x, 0) === 7000, sl);
   await ow.evaluate(() => window.__T.get().closeModal());
+  for (const [who, pg] of [['owner', ow], ['admin', ad]]) {
+    const sid = await pg.evaluate(async () => { const T = window.__T.get(); const s = await T.put('sales', { no: 'S-VOID' + Math.random().toString(36).slice(2, 5), date: T.todayStr(), contactId: '', lines: [{ kind: 'service', name: 'X', qty: 1, unit: 3000 }], discount: 0, adj: [] }); await T.put('payments', { date: T.todayStr(), amount: 3000, method: 'Cash', accountId: '', saleId: s }); return s; });
+    await pg.evaluate(id => { const T = window.__T.get(); T.voidSale(T.D.sales.find(x => x.id === id)); }, sid); await pg.waitForTimeout(250);
+    const labels = await pg.evaluate(() => [...document.querySelectorAll('#modalroot label')].map(l => l.firstChild && l.firstChild.textContent));
+    ok(who + ': void asks only for a reason (no account, no refund steps)', labels.length === 1 && /Why/.test(labels[0]), labels);
+    await pg.click('#modalroot button:has-text("Void sale")'); await pg.waitForTimeout(200);
+    ok(who + ': an empty reason is refused', /Fill in: Why/.test(await pg.textContent('#modalroot')));
+    await pg.fill('#f-reason', 'Entered twice by mistake'); await pg.click('#modalroot button:has-text("Void sale")'); await pg.waitForTimeout(500);
+    const r = await pg.evaluate(id => { const D = window.__T.get().D, s = D.sales.find(x => x.id === id); return { v: s.void, why: s.voidReason, net: D.payments.filter(p => p.saleId === id).reduce((t, p) => t + p.amount, 0) }; }, sid);
+    ok(who + ': voided with the note kept, and the payment reversed to nil', r.v === true && r.why === 'Entered twice by mistake' && r.net === 0, r);
+  }
   const nx = await login('none');
   ok('A login without access sees only a waiting screen, no menu and no data', /Waiting for access/.test(await nx.textContent('body')) && !(await nx.$('.nav')) && !/Wanjiru/.test(await nx.evaluate(() => document.body.innerText)));
   ok('The waiting screen offers Check again and Sign out', !!(await nx.$('button:has-text("Check again")')) && !!(await nx.$('button:has-text("Sign out")')));
