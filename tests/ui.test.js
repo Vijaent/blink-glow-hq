@@ -1,7 +1,7 @@
 // Browser test of the finished index.html with a fake Supabase (no network). Needs: npm i playwright; CHROMIUM_PATH optional.
 const { chromium } = require('playwright');
 const fs = require('fs');
-const INDEX = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8').replace("(function(){\n'use strict';", "(function(){\n'use strict';window.__T={get:()=>({voidSale,apptSvcs,svcLines,IDX,payForm,deleteClient,bookingForm,saleForm,put,nextRcptNo,nextSaleNo,rcptData,rcptHtml,receiptModal,closeModal,todayStr,D})};");
+const INDEX = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8').replace("(function(){\n'use strict';", "(function(){\n'use strict';window.__T={get:()=>({expenseForm,receiveForm,voidSale,apptSvcs,svcLines,IDX,payForm,deleteClient,bookingForm,saleForm,put,nextRcptNo,nextSaleNo,rcptData,rcptHtml,receiptModal,closeModal,todayStr,D})};");
 const FAKE = fs.readFileSync(__dirname + '/fake_supabase.js', 'utf8');
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (c || x === undefined ? '' : ' | ' + JSON.stringify(x))); };
@@ -225,6 +225,11 @@ const CFG = { biz: 'Blink & Glow', tz: 'Africa/Nairobi', phone: '0712345678', ho
     await pg.fill('#f-reason', 'Entered twice by mistake'); await pg.click('#modalroot button:has-text("Void sale")'); await pg.waitForTimeout(500);
     const r = await pg.evaluate(id => { const D = window.__T.get().D, s = D.sales.find(x => x.id === id); return { v: s.void, why: s.voidReason, net: D.payments.filter(p => p.saleId === id).reduce((t, p) => t + p.amount, 0) }; }, sid);
     ok(who + ': voided with the note kept, and the payment reversed to nil', r.v === true && r.why === 'Entered twice by mistake' && r.net === 0, r);
+  }
+  for (const f of ['expenseForm', 'receiveForm']) {
+    await ow.evaluate(f => window.__T.get()[f](), f); await ow.waitForTimeout(250);
+    ok('Owner: ' + f + ' has no account field', !/Paid from|account/i.test(await ow.textContent('#modalroot')), f);
+    await ow.evaluate(() => window.__T.get().closeModal());
   }
   const nx = await login('none');
   ok('A login without access sees only a waiting screen, no menu and no data', /Waiting for access/.test(await nx.textContent('body')) && !(await nx.$('.nav')) && !/Wanjiru/.test(await nx.evaluate(() => document.body.innerText)));

@@ -3200,13 +3200,12 @@ function periodSel(){const s=h('select',{id:'s-per','aria-label':'Period',style:
 function expenseForm(pre,ex){pre=pre||{};let ack=false;
  openForm({title:ex?'Edit expense':'New expense',cta:'Save expense',done:'Expense saved',fields:[
   {k:'desc',l:'What was it for',req:true,v:pre.desc,full:true},{k:'date',l:'Date',t:'date',v:pre.date||todayStr()},{k:'amount',l:'Amount (KSh)',t:'num',req:true,v:pre.amount},{k:'category',l:'Category',t:'sel',o:S.expCats,v:pre.category||S.expCats[0]},
-  {k:'etype',l:'Type',t:'sel',o:ETYPES,v:pre.etype||'Operating',hint:'Only “Operating” reduces profit. Stock goes to inventory, equipment is capital.'},{k:'method',l:'Paid by',t:'sel',o:S.methods,v:pre.method},{k:'acct',l:'Paid from account',t:'sel',o:acctOpts(),v:pre.accountId||defAcct('M-Pesa')},
+  {k:'etype',l:'Type',t:'sel',o:ETYPES,v:pre.etype||'Operating',hint:'Only “Operating” reduces profit. Stock goes to inventory, equipment is capital.'},{k:'method',l:'Paid by',t:'sel',o:S.methods,v:pre.method},
   {k:'supplier',l:'Supplier or recipient',v:pre.supplier},{k:'mktSource',l:'Marketing for which source',t:'sel',o:[['','Not marketing']].concat(S.sources.map(s=>[s,s])),v:pre.mktSource||'',hint:'Used for cost per client'},{k:'campaignId',l:'Campaign',t:'sel',o:campOpts(),v:pre.campaignId||''},
   {k:'recurring',l:'Recurring cost',t:'chk',v:pre.recurring},{k:'receipt',l:'Receipt reference',v:pre.receipt,hint:'Receipt file upload is not available in this version. Note the receipt number.'},{k:'notes',l:'Notes',t:'ta',full:true,v:pre.notes}],
-  submit:async v=>{if(!(v.amount>0))return 'Enter an amount above zero.';if(!v.acct)return 'Choose the account the money came from.';
-   if(!ex&&D.expenses.some(e=>e.date===v.date&&e.amount===rd(v.amount)&&e.desc===v.desc&&e.accountId===v.acct&&Date.now()-(e.ts||0)<60000))return 'The same expense was saved a moment ago.';
-   const a=D.accounts.find(x=>x.id===v.acct);if(a&&accBal(a)<v.amount&&!ack&&!ex){ack=true;return a.name+' only shows '+money(accBal(a))+'. Press again if the balance is missing an entry.'}
-   const rec={desc:v.desc,date:v.date,amount:rd(v.amount),category:v.category,etype:v.etype,method:v.method,accountId:v.acct,supplier:v.supplier,mktSource:v.mktSource,campaignId:v.campaignId,recurring:v.recurring,receipt:v.receipt,notes:v.notes,obId:pre.obId||''};
+  submit:async v=>{if(!(v.amount>0))return 'Enter an amount above zero.';const acct=ex?(ex.accountId||defAcct(v.method)):defAcct(v.method);
+   if(!ex&&D.expenses.some(e=>e.date===v.date&&e.amount===rd(v.amount)&&e.desc===v.desc&&e.accountId===acct&&Date.now()-(e.ts||0)<60000))return 'The same expense was saved a moment ago.';
+   const rec={desc:v.desc,date:v.date,amount:rd(v.amount),category:v.category,etype:v.etype,method:v.method,accountId:acct,supplier:v.supplier,mktSource:v.mktSource,campaignId:v.campaignId,recurring:v.recurring,receipt:v.receipt,notes:v.notes,obId:pre.obId||''};
    if(ex)await patch('expenses',ex.id,rec);else await put('expenses',rec)}})}
 function obCycle(o){const t=todayStr(),y=+t.slice(0,4),m=+t.slice(5,7)-1;let a,b,due;
  if(o.freq==='Weekly'){const dw=(dow(t)+6)%7;a=addD(t,-dw);b=addD(a,6);due=addD(a,Math.max(0,Math.min(6,(+o.dueDay||5)-1)))}
@@ -3316,11 +3315,11 @@ function productForm(p){const e=!!p;p=p||{};openForm({title:e?'Edit product':'Ne
  submit:async v=>{const open=v.open;delete v.open;if(e)await patch('products',p.id,v);else{v.avg=rd(v.cost);const id=await put('products',v);if(open>0)await put('moves',{date:todayStr(),productId:id,type:'Opening',qty:open,unitCost:rd(v.cost),note:'Opening stock'})}}})}
 function receiveForm(p){let ack=false;openForm({title:'Receive stock',cta:'Record purchase',done:'Stock received',note:'Adds stock at its cost. The cost reaches profit only when the stock is used or sold.',fields:[
  {k:'pid',l:'Product',t:'sel',o:D.products.filter(x=>!x.archived).map(x=>[x.id,x.name]),v:p?p.id:'',full:true},{k:'qty',l:'Quantity',t:'num',req:true},{k:'cost',l:'Cost per unit (KSh)',t:'num',req:true,v:p?p.cost:''},{k:'date',l:'Date',t:'date',v:todayStr()},{k:'expiry',l:'Expiry date',t:'date'},
- {k:'exp',l:'Also record the payment as an expense',t:'chk',v:true},{k:'method',l:'Paid by',t:'sel',o:S.methods},{k:'acct',l:'Paid from',t:'sel',o:acctOpts(),v:defAcct('M-Pesa')},{k:'supplier',l:'Supplier'}],
+ {k:'exp',l:'Also record the payment as an expense',t:'chk',v:true},{k:'method',l:'Paid by',t:'sel',o:S.methods},{k:'supplier',l:'Supplier'}],
  onChange:(k,api)=>{if(k==='pid'){const x=IDX.product[api.get('pid')];if(x){api.set('cost',x.cost||'');api.set('supplier',x.supplier||'')}}},
- submit:async v=>{const x=IDX.product[v.pid];if(!x)return 'Choose a product.';if(!(v.qty>0)||!(v.cost>0))return 'Enter quantity and cost.';if(v.exp&&!v.acct)return 'Choose the account the payment came from.';
+ submit:async v=>{const x=IDX.product[v.pid];if(!x)return 'Choose a product.';if(!(v.qty>0)||!(v.cost>0))return 'Enter quantity and cost.';
   const q0=Math.max(0,IDX.qty[x.id]||0),avg=Math.round((q0*prodAvg(x)+v.qty*v.cost)/(q0+v.qty));let eid='';
-  if(v.exp)eid=await put('expenses',{desc:'Stock: '+x.name+' × '+v.qty,date:v.date,amount:rd(v.qty*v.cost),category:'Stock purchases',etype:'Inventory purchase',method:v.method,accountId:v.acct,supplier:v.supplier||x.supplier||'',notes:''});
+  if(v.exp)eid=await put('expenses',{desc:'Stock: '+x.name+' × '+v.qty,date:v.date,amount:rd(v.qty*v.cost),category:'Stock purchases',etype:'Inventory purchase',method:v.method,accountId:defAcct(v.method),supplier:v.supplier||x.supplier||'',notes:''});
   await put('moves',{date:v.date,productId:x.id,type:'Purchase',qty:v.qty,unitCost:rd(v.cost),note:v.supplier||'',expenseId:eid});
   await patch('products',x.id,{avg:avg,cost:rd(v.cost),lastPurchase:v.date,expiry:v.expiry||x.expiry||'',supplier:v.supplier||x.supplier||''})}})}
 function moveForm(p){openForm({title:'Stock adjustment',done:'Movement recorded',note:'Every change is a new movement. Past records are never rewritten.',fields:[
