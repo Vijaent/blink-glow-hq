@@ -58,9 +58,9 @@ create trigger slots_guard before insert or update on public.records
 -- ---------------------------------------------------------------------------------------------
 -- Who may do what. Two kinds of signed-in user:
 --   owner : everything (finance, reports, settings, services, marketing, team access)
---   admin : day-to-day work only (clients, bookings, sales and payments entry, stock movements).
---           Cannot read or write expenses, accounts, transfers, obligations, content, campaigns or
---           the audit trail, cannot change settings or services, and cannot void, refund or adjust a sale.
+--   admin : day-to-day work (clients, bookings, sales incl. adjust and void, payments entry, stock and products)
+--           and can see services and prices. Cannot read or write expenses, accounts, transfers,
+--           obligations, content, campaigns or the audit trail, and cannot change settings or services.
 -- Anyone signed in who is not listed in team_roles has NO access until an owner permits them on the
 -- Users page. Sign-ups are switched off, so only people created in Supabase can sign in at all.
 -- ---------------------------------------------------------------------------------------------
@@ -92,9 +92,9 @@ begin
   if op = 'select' then
     return coll in ('contacts','inq','followups','appts','slots','inbox','sales','payments','moves','products','msglog','services','accounts','cfg');
   elsif op = 'insert' then
-    return coll in ('contacts','inq','followups','appts','slots','inbox','sales','payments','moves','msglog','audit');
+    return coll in ('contacts','inq','followups','appts','slots','inbox','sales','payments','moves','products','msglog','audit');
   elsif op = 'update' then
-    return coll in ('contacts','inq','followups','appts','slots','inbox','sales','msglog');
+    return coll in ('contacts','inq','followups','appts','slots','inbox','sales','products','msglog');
   elsif op = 'delete' then
     return coll in ('slots','followups','inbox','inq','appts');
   end if;
@@ -102,24 +102,9 @@ begin
 end;
 $$;
 
--- An admin can record a sale but cannot void it, refund it or add adjustments.
-create or replace function public.sales_guard()
-returns trigger language plpgsql security definer set search_path = public as $$
-declare o jsonb := case when tg_op = 'INSERT' then '{}'::jsonb else old.data end;
-begin
-  if new.collection = 'sales' and public.bg_role() = 'admin' then
-    if coalesce(o->'void','false'::jsonb) <> coalesce(new.data->'void','false'::jsonb)
-       or coalesce(o->'refund','0'::jsonb) <> coalesce(new.data->'refund','0'::jsonb)
-       or coalesce(o->'adj','[]'::jsonb) <> coalesce(new.data->'adj','[]'::jsonb) then
-      raise exception 'owner_only' using errcode = '42501', hint = 'Only the owner can void, refund or adjust a sale.';
-    end if;
-  end if;
-  return new;
-end;
-$$;
+-- (Earlier versions blocked Admin from voiding or adjusting sales. Admin may now do both; owners see them in the audit trail.)
 drop trigger if exists sales_guard on public.records;
-create trigger sales_guard before insert or update on public.records
-  for each row execute function public.sales_guard();
+drop function if exists public.sales_guard();
 
 alter table public.records enable row level security;
 drop policy if exists "team can read"   on public.records;

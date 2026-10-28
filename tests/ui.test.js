@@ -120,7 +120,7 @@ const CFG = { biz: 'Blink & Glow', tz: 'Africa/Nairobi', phone: '0712345678', ho
   const ow = await login('owner'), ad = await login('admin');
   const nOwner = await navOf(ow), nAdmin = await navOf(ad);
   ok('Owner menu has everything', ['Overview', 'Bookings', 'Clients', 'Sales', 'Finance Tracker', 'Stock', 'Marketing', 'Reports', 'Users', 'Settings'].every(t => nOwner.some(x => x.includes(t))), nOwner);
-  ok('Admin menu has only day-to-day pages', ['Overview', 'Bookings', 'Clients', 'Sales', 'Stock'].every(t => nAdmin.some(x => x.includes(t))) && !nAdmin.some(x => /Finance|Reports|Settings|Marketing|Services|Users/.test(x)), nAdmin);
+  ok('Admin menu has only day-to-day pages', ['Overview', 'Bookings', 'Clients', 'Sales', 'Stock', 'Services'].every(t => nAdmin.some(x => x.includes(t))) && !nAdmin.some(x => /Finance|Reports|Settings|Marketing|Users/.test(x)), nAdmin);
   ok('Sidebar says which access you have', /Owner access/.test(await ow.textContent('.sidefoot')) && /Admin access/.test(await ad.textContent('.sidefoot')));
   ok('Owner overview shows revenue; Admin overview does not', /Revenue target/.test(await ow.textContent('main')) && !/Revenue target|Estimated profit|Money collected/.test(await ad.textContent('main')));
   ok('Admin overview shows today\'s work', /Appointments today/.test(await ad.textContent('main')) && /Requests to confirm/.test(await ad.textContent('main')));
@@ -129,9 +129,11 @@ const CFG = { biz: 'Blink & Glow', tz: 'Africa/Nairobi', phone: '0712345678', ho
   ok('Admin quick add has no expense or content items', qa.includes('New sale') && !qa.includes('New expense') && !qa.includes('New content item'), qa);
   await ad.click('#modalroot button:has-text("Close")').catch(() => {}); await ad.keyboard.press('Escape');
   await ad.click('.nav >> text=Sales'); await ad.waitForTimeout(300);
-  ok('Admin sales page hides totals and void/adjust', !/Money collected|Average sale/.test(await ad.textContent('main')) && !(await ad.$('button:has-text("Void")')) && !(await ad.$('button:has-text("Adjust")')));
+  ok('Admin sales page hides revenue totals but allows adjust and void', !/Money collected|Average sale/.test(await ad.textContent('main')));
   await ad.click('.nav >> text=Stock'); await ad.waitForTimeout(300);
-  ok('Admin stock page has no cost value or receive/new product', !/Stock value/.test(await ad.textContent('main')) && !(await ad.$('button:has-text("New product")')) && !(await ad.$('button:has-text("Receive")')));
+  ok('Admin stock page can receive stock and add products', !!(await ad.$('button:has-text("New product")')) && !!(await ad.$('button:has-text("Receive stock")')));
+  await ad.click('.nav >> text=Services'); await ad.waitForTimeout(300);
+  ok('Admin sees services and prices but cannot edit them', /Services and prices/.test(await ad.textContent('main')) && !(await ad.$('button:has-text("New service")')) && !(await ad.$('button:has-text("Edit")')));
   // owner: settings, team, hours, link
   await ow.click('.nav >> text=Settings'); await ow.waitForTimeout(500);
   await ow.click('.nav >> text=Users'); await ow.waitForTimeout(600);
