@@ -2948,7 +2948,7 @@ function importForm(){openForm({title:'Import existing clients',cta:'Import',don
   toast('Imported '+add+', skipped '+skip+' that already exist')}})}
 function profile(id){const c=IDX.contact[id];if(!c)return;const x=IDX.cs[id]||{visits:0,spend:0,first:'',last:''},d=IDX.done[id]||{n:0,last:''};
  const ev=[];D.inq.filter(i=>i.contactId===id).forEach(i=>ev.push([i.date,'Inquiry',(IDX.service[i.service]?IDX.service[i.service].name:'General')+' via '+(i.source||'unknown source')]));
- D.appts.filter(a=>a.contactId===id).forEach(a=>ev.push([a.date,'Booking',(IDX.service[a.serviceId]||{name:'Service'}).name+' · '+a.status+' · '+mstr(a.start)]));
+ D.appts.filter(a=>a.contactId===id).forEach(a=>ev.push([a.date,'Booking',apptSvcName(a)+' · '+a.status+' · '+mstr(a.start)]));
  D.sales.filter(s=>s.contactId===id&&!s.void).forEach(s=>ev.push([s.date,'Sale',s.no+' · '+money(saleNet(s))+' · '+saleStatus(s)]));
  D.payments.filter(p=>{const s=D.sales.find(z=>z.id===p.saleId);return s&&s.contactId===id}).forEach(p=>ev.push([p.date,'Payment',money(p.amount)+' by '+p.method]));
  D.followups.filter(f=>f.contactId===id).forEach(f=>ev.push([f.status==='Done'?(f.doneAt||f.due):f.due,'Follow-up',TPL_LABEL[f.type]+' · '+(f.outcome||fuState(f))]));
@@ -2998,19 +2998,27 @@ const defAcct=m=>{const a=D.accounts.find(x=>!x.archived&&(m==='M-Pesa'?/pesa/i.
 function checkWindow(date,start,dur){const day=S.hours[dow(date)];if(!day)return 'The studio is closed that day.';if(dayBlocked(S,date))return 'That date is blocked in Settings.';
  if(start<tmin(day.o)||start+dur>tmin(day.c))return 'Outside working hours ('+day.o+' to '+day.c+').';
  if(S.breaks.some(b=>overlap(start,start+dur,tmin(b.from),tmin(b.to))))return 'That time overlaps a break.';return ''}
-function bookingForm(pre){pre=pre||{};let A=null;
+function apptSvcs(a){const out=[],p=IDX.service[a.serviceId];out.push({id:a.serviceId,name:p?p.name:'Service',price:p?(p.promo||p.price||0):0,sv:p});(a.extra||[]).forEach(e=>{const x=IDX.service[e.serviceId];out.push({id:e.serviceId,name:x?x.name:(e.name||'Service'),price:e.price!=null?e.price:(x?(x.promo||x.price||0):0),sv:x})});return out}
+function apptSvcName(a){return apptSvcs(a).map(x=>x.name).join(' + ')}
+function svcLines(a,total){const L=apptSvcs(a).map(x=>({kind:'service',refId:x.id,name:x.name,qty:1,unit:rd(x.price)}));if(L.length===1){L[0].unit=rd(total);return L}
+ const diff=rd(total)-sum(L,l=>l.unit);if(diff)L[0].unit=Math.max(0,L[0].unit+diff);return L}
+function bookingForm(pre){pre=pre||{};let A=null;const extraBox=h('div',{style:'display:flex;flex-direction:column;gap:6px'}),extraSels=[];
+ const recalc=()=>{if(!A)return;const ids=[A.get('service')].concat(extraSels.map(x=>x.value)).filter(Boolean),L=ids.map(i=>IDX.service[i]).filter(Boolean);if(!L.length)return;A.set('dur',sum(L,x=>x.dur||S.defDur));A.set('price',sum(L,x=>x.promo||x.price||0));refresh()};
+ const addRow=()=>{const sel=h('select',{'aria-label':'Another service',onchange:recalc},svcOpts().map(o=>{const a=Array.isArray(o)?o:[o,o];return h('option',{value:a[0],text:a[1]===''?'Choose a service':a[1]})}));extraSels.push(sel);
+  const row=h('div',{class:'row',style:'align-items:center;gap:8px'},[sel,h('button',{type:'button',class:'btn ghost sm',text:'Remove',onclick:()=>{extraSels.splice(extraSels.indexOf(sel),1);row.remove();recalc()}})]);extraBox.appendChild(row)};
+ const extraEl=h('div',{style:'display:flex;flex-direction:column;gap:6px'},[extraBox,h('button',{type:'button',class:'btn ghost sm',style:'align-self:flex-start',text:'+ Add another service',onclick:addRow}),h('small',{text:'Length and price add up automatically. You can still change them below.'})]);
  const freeEl=h('div',{class:'slotgrid',style:'margin-top:4px'});
  const refresh=()=>{if(!A)return;freeEl.innerHTML='';const date=A.get('date'),dur=A.get('dur'),st=A.get('staff');const sl=openSlots(S,D.slots,date,dur,st==='Any'?'':st,()=>999).slice(0,14);
   if(!sl.length)freeEl.appendChild(h('small',{text:'No free start times that day for this staff and length.'}));
   sl.forEach(s=>freeEl.appendChild(h('button',{type:'button',class:'slot',text:mstr(s.t),onclick:()=>{A.set('time',mstr(s.t))}})))};
  A=openForm({title:'New booking',cta:'Save booking',done:'Booking saved',wide:true,note:'A booking is firm when it has a day, time, stylist and deposit. Overlaps for the same stylist are blocked.',fields:[
   {k:'who',l:'Client',t:'contact',req:true,full:true,v:pre.who||'',hint:'Pick an existing client or type a new name'},{k:'phone',l:'Phone (new client)',t:'tel',v:pre.phone},
-  {k:'service',l:'Service',t:'sel',o:svcOpts(),v:pre.service||''},{k:'staff',l:'Stylist',t:'sel',o:staffOpts().concat([['Any','Any free stylist']]),v:S.staff[0]},{k:'date',l:'Day',t:'date',v:pre.date||todayStr()},{k:'time',l:'Start time',t:'time',v:pre.time||'09:00'},
+  {k:'service',l:'Service',t:'sel',o:svcOpts(),v:pre.service||''},{k:'more',l:'More services (optional)',full:true,custom:()=>({el:extraEl,get:()=>''})},{k:'staff',l:'Stylist',t:'sel',o:staffOpts().concat([['Any','Any free stylist']]),v:S.staff[0]},{k:'date',l:'Day',t:'date',v:pre.date||todayStr()},{k:'time',l:'Start time',t:'time',v:pre.time||'09:00'},
   {k:'dur',l:'Length (minutes)',t:'num',v:S.defDur},{k:'price',l:'Quoted price (KSh)',t:'num'},{k:'deposit',l:'Deposit received (KSh)',t:'num'},{k:'method',l:'Deposit method',t:'sel',o:S.methods},
   {k:'source',l:'How she found us',t:'sel',o:srcOpts(),v:pre.source||''},{k:'status',l:'Status',t:'sel',o:['Pending confirmation','Confirmed'],v:'Confirmed'},
   {k:'free',l:'Free start times',full:true,custom:()=>({el:freeEl,get:()=>''})},{k:'notes',l:'Notes',t:'ta',full:true}],
   onChange:(k,api)=>{if(k==='who'){const c=findContact(api.get('who'));if(c){api.set('phone',c.phone||'');if(c.source&&!api.get('source'))api.set('source',c.source)}}
-   if(k==='service'){const s=IDX.service[api.get('service')];if(s){api.set('dur',s.dur||S.defDur);api.set('price',s.promo||s.price||'')}}
+   if(k==='service')recalc();
    if(['service','date','staff','dur','init'].includes(k))refresh()},
   submit:async v=>{if(!v.who.trim())return 'Add the client.';const dur=rd(v.dur)||S.defDur,start=tmin(v.time);
    const w=checkWindow(v.date,start,dur);if(w)return w;
@@ -3019,8 +3027,9 @@ function bookingForm(pre){pre=pre||{};let A=null;
    const cid=await ensureContact(v.who,v.phone,v.source,'Booked');
    const ct=D.contacts.find(x=>x.id===cid);if(ct&&!ct.source&&v.source)await patch('contacts',cid,{source:v.source});await patch('contacts',cid,{stage:'Booked',lastContact:todayStr()});
    const a={id:uid(),contactId:cid,serviceId:v.service,staff:staff,date:v.date,start:start,dur:dur,price:v.price,deposit:v.deposit,status:v.status,source:v.source,notes:v.notes,createdBy:'dashboard'};
+   const xs=extraSels.map(x=>IDX.service[x.value]).filter(Boolean);if(xs.length)a.extra=xs.map(x=>({serviceId:x.id,name:x.name,price:x.promo||x.price||0,dur:x.dur||S.defDur}));
    const sv=IDX.service[v.service];
-   if(v.deposit>0||v.price>0){const sid=uid();a.saleId=sid;await put('sales',{id:sid,no:nextSaleNo(),date:v.date,contactId:cid,lines:[{kind:'service',refId:v.service,name:sv?sv.name:'Appointment',qty:1,unit:rd(v.price)}],discount:0,refund:0,adj:[],channel:'',pending:true,apptId:a.id,notes:''});
+   if(v.deposit>0||v.price>0){const sid=uid();a.saleId=sid;await put('sales',{id:sid,no:nextSaleNo(),date:v.date,contactId:cid,lines:v.service?svcLines(a,v.price):[{kind:'service',refId:'',name:'Appointment',qty:1,unit:rd(v.price)}],discount:0,refund:0,adj:[],channel:'',pending:true,apptId:a.id,notes:''});
     if(v.deposit>0)offerReceipt(await put('payments',{date:todayStr(),amount:rd(v.deposit),method:v.method,accountId:defAcct(v.method),saleId:sid,ref:'',notes:'Booking deposit',rno:nextRcptNo()}))}
    await put('appts',a);syncSlot(a);audit('Booking created',cName(cid)+' '+v.date+' '+v.time);
    if(v.deposit<=0)toast('Saved without a deposit. Chase it before the day.')}})}
@@ -3033,18 +3042,18 @@ function cancelFlow(a,st){const s=a.saleId&&D.sales.find(x=>x.id===a.saleId),pai
   await patch('appts',a.id,{status:st});syncSlot(Object.assign({},a,{status:st}));audit('Booking '+st,cName(a.contactId)+' '+a.date);toast('Marked '+st)};
  if(paid>0){const body=h('div',{style:'display:flex;flex-direction:column;gap:12px'},[h('p',{style:'margin:0',text:cName(a.contactId)+' paid a deposit of '+money(paid)+'. What happens to it?'}),h('div',{class:'row'},[h('button',{class:'btn',text:'Keep it as income',onclick:()=>{closeModal();run('keep')}}),h('button',{class:'btn ghost',text:'Refund it',onclick:()=>{closeModal();run('refund')}}),h('button',{class:'btn ghost',text:'Cancel',onclick:closeModal})]),h('p',{class:'hint',style:'margin:0',text:'Your rule: '+S.cancelRule})]);modal('Deposit on '+st,body)}
  else confirmBox('Mark this booking as '+st+'?',()=>run(''),'Yes, '+st.toLowerCase())}
-function completeFlow(a){const sv=IDX.service[a.serviceId],s=a.saleId&&D.sales.find(x=>x.id===a.saleId),paid=s?salePaid(s):0;
- openForm({title:'Complete appointment',cta:'Complete and record sale',done:'Appointment completed',note:cName(a.contactId)+' · '+(sv?sv.name:'Service')+' · '+fd(a.date),fields:[
+function completeFlow(a){const recs=apptSvcs(a).flatMap(x=>((x.sv&&x.sv.recipe)||[]).map(r=>Object.assign({},r,{_n:x.name}))),sv=IDX.service[a.serviceId],s=a.saleId&&D.sales.find(x=>x.id===a.saleId),paid=s?salePaid(s):0;
+ openForm({title:'Complete appointment',cta:'Complete and record sale',done:'Appointment completed',note:cName(a.contactId)+' · '+apptSvcName(a)+' · '+fd(a.date),fields:[
   {k:'price',l:'Final price (KSh)',t:'num',v:a.price||0},{k:'discount',l:'Discount (KSh)',t:'num'},{k:'channel',l:'Sales channel',t:'sel',o:S.channels,v:'WhatsApp'},
   {k:'pay',l:'Paid now (KSh)',t:'num',v:Math.max(0,(a.price||0)-paid),hint:paid?'Deposit already paid: '+money(paid):''},{k:'method',l:'Method',t:'sel',o:S.methods},
-  {k:'use',l:'Deduct standard products from stock',t:'chk',v:S.autoConsume&&sv&&(sv.recipe||[]).length>0}],
+  {k:'use',l:'Deduct standard products from stock',t:'chk',v:S.autoConsume&&recs.length>0}],
     submit:async v=>{
-   if(v.use&&sv){for(const r of sv.recipe||[]){const p=IDX.product[r.productId];if(p&&S.noNeg&&(IDX.qty[p.id]||0)<r.qty)return 'Not enough '+p.name+' in stock ('+(IDX.qty[p.id]||0)+' left). Receive stock first or untick the box.'}}
-   const lines=[{kind:'service',refId:a.serviceId,name:sv?sv.name:'Service',qty:1,unit:rd(v.price)}];let sid=a.saleId;
+   if(v.use){for(const r of recs){const p=IDX.product[r.productId];if(p&&S.noNeg&&(IDX.qty[p.id]||0)<r.qty)return 'Not enough '+p.name+' in stock ('+(IDX.qty[p.id]||0)+' left). Receive stock first or untick the box.'}}
+   const lines=svcLines(a,v.price);let sid=a.saleId;
    if(s)await patch('sales',s.id,{lines:lines,discount:rd(v.discount),pending:false,channel:v.channel,date:a.date});
    else{sid=uid();await put('sales',{id:sid,no:nextSaleNo(),date:a.date,contactId:a.contactId,lines:lines,discount:rd(v.discount),refund:0,adj:[],channel:v.channel,pending:false,apptId:a.id,notes:''})}
    if(v.pay>0)offerReceipt(await put('payments',{date:todayStr(),amount:rd(v.pay),method:v.method,accountId:defAcct(v.method),saleId:sid,ref:'',notes:'',rno:nextRcptNo()}));
-   if(v.use&&sv&&!a.consumed){for(const r of sv.recipe||[]){const p=IDX.product[r.productId];if(p)await put('moves',{date:a.date,productId:p.id,type:'Consumption',qty:-r.qty,unitCost:prodAvg(p),note:(sv.name)+' for '+cName(a.contactId),apptId:a.id})}}
+   if(v.use&&!a.consumed){for(const r of recs){const p=IDX.product[r.productId];if(p)await put('moves',{date:a.date,productId:p.id,type:'Consumption',qty:-r.qty,unitCost:prodAvg(p),note:r._n+' for '+cName(a.contactId),apptId:a.id})}}
    await patch('appts',a.id,{status:'Completed',saleId:sid,consumed:!!v.use});syncSlot(Object.assign({},a,{status:'Completed'}));
    await patch('contacts',a.contactId,{lastContact:a.date});audit('Appointment completed',cName(a.contactId)+' '+a.date)}})}
 function reschedFlow(a){openForm({title:'Reschedule',done:'Rescheduled',note:cName(a.contactId),fields:[{k:'date',l:'New day',t:'date',v:a.date},{k:'time',l:'New start time',t:'time',v:mstr(a.start)},{k:'staff',l:'Stylist',t:'sel',o:staffOpts(),v:a.staff}],
@@ -3066,7 +3075,7 @@ function viewBookings(){const w=h('div',{class:'wrap'}),k=sub.book||'sched',t=to
   const free=S.staff.length;for(let i=0;i<7;i++){const d=addD(f,i),as=list.filter(a=>a.date===d&&!['Cancelled'].includes(a.status)).sort((a,b)=>a.start-b.start),hrs=S.hours[dow(d)];
    w.appendChild(card(fd(d)+(d===t?'  ·  Today':''),hrs?hrs.o+' to '+hrs.c+' · '+as.length+' booking'+(as.length===1?'':'s'):'Closed',as.length?apptTable(as):h('p',{class:'msg',text:hrs?'Nothing booked.':''})))}return w}
  w.appendChild(apptTable(list));return w}
-function apptTable(as){return tbl(['Time','Client','Service','Stylist','Status','Payment',''],as.map(a=>{const sv=IDX.service[a.serviceId];return [fd(a.date)+' '+mstr(a.start)+'–'+mstr(a.start+a.dur),h('a',{href:'#',onclick:e=>{e.preventDefault();profile(a.contactId)},text:cName(a.contactId)}),(sv?sv.name:'—')+' · '+a.dur+' min',a.staff,pill(a.status,a.status==='Completed'?'good':a.status==='Confirmed'||a.status==='Rescheduled'?'green':a.status==='Pending confirmation'?'warn':a.status==='Cancelled'||a.status==='No-show'?'bad':''),pill(apptPay(a),apptPay(a)==='Paid'?'good':apptPay(a)==='Unpaid'?'warn':''),
+function apptTable(as){return tbl(['Time','Client','Service','Stylist','Status','Payment',''],as.map(a=>{const sv=IDX.service[a.serviceId]?{name:apptSvcName(a)}:null;return [fd(a.date)+' '+mstr(a.start)+'–'+mstr(a.start+a.dur),h('a',{href:'#',onclick:e=>{e.preventDefault();profile(a.contactId)},text:cName(a.contactId)}),(sv?sv.name:'—')+' · '+a.dur+' min',a.staff,pill(a.status,a.status==='Completed'?'good':a.status==='Confirmed'||a.status==='Rescheduled'?'green':a.status==='Pending confirmation'?'warn':a.status==='Cancelled'||a.status==='No-show'?'bad':''),pill(apptPay(a),apptPay(a)==='Paid'?'good':apptPay(a)==='Unpaid'?'warn':''),
   h('span',{class:'act'},['Completed','Cancelled','No-show'].includes(a.status)?[h('button',{class:'btn ghost sm',text:'WhatsApp',onclick:()=>waPick(IDX.contact[a.contactId],{service:sv?sv.name:'',date:fd(a.date),time:mstr(a.start)})})]:[
    a.status==='Pending confirmation'?h('button',{class:'btn sm',text:'Confirm',onclick:()=>setStatus(a,'Confirmed')}):h('button',{class:'btn sm',text:'Complete',onclick:()=>setStatus(a,'Completed')}),' ',
    h('button',{class:'btn ghost sm',text:'Remind',onclick:()=>waModal(a.contactId,a.status==='Pending confirmation'?'confirm':'reminder',{service:sv?sv.name:'',date:fd(a.date),time:mstr(a.start)})}),' ',h('button',{class:'btn ghost sm',text:'Move',onclick:()=>reschedFlow(a)}),' ',h('button',{class:'btn danger sm',text:'Cancel',onclick:()=>setStatus(a,'Cancelled')}),' ',h('button',{class:'btn danger sm',text:'No-show',onclick:()=>setStatus(a,'No-show')})])]}),{empty:emptyBox('No bookings','Add the first booking, or share your booking link.',h('button',{class:'btn',text:'New booking',onclick:()=>bookingForm()}))})}
@@ -3408,7 +3417,7 @@ function viewOverviewAdmin(){const w=h('div',{class:'wrap'}),t=todayStr();
  const reqs=D.requests.filter(r=>r.status==='New'),fus=D.followups.filter(f=>f.status!=='Done'&&f.due<=t);
  w.appendChild(h('div',{class:'bigacts'},[['New booking',()=>bookingForm()],['New client',()=>contactForm()],['New sale',()=>saleForm()],['Record payment',()=>payForm()],['Adjust stock',()=>D.products.length?moveForm():toast('The owner has not added products yet',true)]].map(a=>h('button',{class:'btn',type:'button',text:a[0],onclick:a[1]}))));
  w.appendChild(h('div',{class:'grid'},[tile('Appointments today',num(todays.length),fdy(t)),tile('Requests to confirm',num(reqs.length),reqs.length?'Open Bookings, then Requests':'None waiting',reqs.length?['warn','Action']:null),tile('Follow-ups due',num(fus.length),fus.length?'Open Clients, then Follow-ups':'All caught up',fus.length?['warn','Action']:null),tile('Unpaid sales',num(outstanding().length),'sales with a balance')]));
- const row=a=>{const r=[fd(a.date)+' '+mstr(a.start),cName(a.contactId),(IDX.service[a.serviceId]||{}).name||'—',a.staff||'—',pill(a.status,a.status==='Pending confirmation'?'warn':'green')];r.onclick=()=>{tab='bookings';render()};return r};
+ const row=a=>{const r=[fd(a.date)+' '+mstr(a.start),cName(a.contactId),apptSvcName(a),a.staff||'—',pill(a.status,a.status==='Pending confirmation'?'warn':'green')];r.onclick=()=>{tab='bookings';render()};return r};
  w.appendChild(card('Today’s diary','Appointments booked for today.',tbl(['When','Client','Service','Stylist','Status'],todays.map(row),{empty:emptyBox('Nothing booked today','Press New booking above to add one.')})));
  w.appendChild(card('Coming up',null,tbl(['When','Client','Service','Stylist','Status'],up.map(row),{empty:emptyBox('No upcoming appointments','')})));
  return w}
@@ -3430,7 +3439,7 @@ function viewOverview(){const w=h('div',{class:'wrap'}),R=range(PER.k,PER.a,PER.
  // upcoming
  const t=todayStr(),up=D.appts.filter(a=>a.date>=t&&['Pending confirmation','Confirmed','Rescheduled'].includes(a.status)&&(a.date>t||a.start+a.dur>tmin(nowHM()))).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:a.start-b.start).slice(0,8);
  const two=h('div',{class:'two'});
- two.appendChild(card('Upcoming appointments',null,tbl(['When','Client','Service','Length','Status','Payment'],up.map(a=>{const r=[fd(a.date)+' '+mstr(a.start),cName(a.contactId),(IDX.service[a.serviceId]||{}).name||'—',Math.round(a.dur/60*10)/10+' h',pill(a.status,a.status==='Pending confirmation'?'warn':'green'),pill(apptPay(a),apptPay(a)==='Unpaid'?'warn':'good')];r.onclick=()=>{tab='bookings';render()};return r}),{empty:emptyBox('Nothing coming up','Bookings you add or confirm show here.',h('button',{class:'btn',text:'New booking',onclick:()=>bookingForm()}))})));
+ two.appendChild(card('Upcoming appointments',null,tbl(['When','Client','Service','Length','Status','Payment'],up.map(a=>{const r=[fd(a.date)+' '+mstr(a.start),cName(a.contactId),apptSvcName(a),Math.round(a.dur/60*10)/10+' h',pill(a.status,a.status==='Pending confirmation'?'warn':'green'),pill(apptPay(a),apptPay(a)==='Unpaid'?'warn':'good')];r.onclick=()=>{tab='bookings';render()};return r}),{empty:emptyBox('Nothing coming up','Bookings you add or confirm show here.',h('button',{class:'btn',text:'New booking',onclick:()=>bookingForm()}))})));
  const sr=sourceReport(R.a,R.b);
  two.appendChild(card('Where clients come from','Original source of each client. Sales channel and payment method are tracked separately.',sr.length?tbl(['Source','#Inquiries','#New clients','#Sales'],sr.map(r=>[r.n,r.inq,r.clients,money(r.rev)])):emptyBox('No source data in this period','Record the source on every inquiry and client.')));
  w.appendChild(two);

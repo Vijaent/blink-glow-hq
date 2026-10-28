@@ -1,7 +1,7 @@
 // Browser test of the finished index.html with a fake Supabase (no network). Needs: npm i playwright; CHROMIUM_PATH optional.
 const { chromium } = require('playwright');
 const fs = require('fs');
-const INDEX = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8').replace("(function(){\n'use strict';", "(function(){\n'use strict';window.__T={get:()=>({payForm,deleteClient,bookingForm,saleForm,put,nextRcptNo,nextSaleNo,rcptData,rcptHtml,receiptModal,closeModal,todayStr,D})};");
+const INDEX = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8').replace("(function(){\n'use strict';", "(function(){\n'use strict';window.__T={get:()=>({apptSvcs,svcLines,IDX,payForm,deleteClient,bookingForm,saleForm,put,nextRcptNo,nextSaleNo,rcptData,rcptHtml,receiptModal,closeModal,todayStr,D})};");
 const FAKE = fs.readFileSync(__dirname + '/fake_supabase.js', 'utf8');
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (c || x === undefined ? '' : ' | ' + JSON.stringify(x))); };
@@ -202,6 +202,19 @@ const CFG = { biz: 'Blink & Glow', tz: 'Africa/Nairobi', phone: '0712345678', ho
   await ow.evaluate(() => { const T = window.__T.get(); T.deleteClient(T.D.contacts.find(c => c.name === 'Delete Me')); }); await ow.waitForTimeout(200);
   await ow.click('#modalroot button:has-text("Delete client")'); await ow.waitForTimeout(500);
   ok('Owner can delete a client', await ow.evaluate(() => !window.__T.get().D.contacts.some(c => c.name === 'Delete Me')));
+  // multi-service booking
+  await ow.evaluate(async () => { const T = window.__T.get(); await T.put('services', { name: 'Test Lashes', price: 5000, dur: 120 }); await T.put('services', { name: 'Test Brows', price: 2500, dur: 60 }); });
+  await ow.evaluate(() => window.__T.get().bookingForm()); await ow.waitForTimeout(300);
+  ok('Booking form offers "+ Add another service"', !!(await ow.$('#modalroot button:has-text("Add another service")')));
+  const svcN = await ow.evaluate(() => document.querySelectorAll('#f-service option').length);
+  if (svcN >= 3) {
+    await ow.selectOption('#f-service', { index: 1 }); await ow.click('#modalroot button:has-text("Add another service")'); await ow.selectOption('#modalroot select[aria-label="Another service"]', { index: 2 }); await ow.waitForTimeout(200);
+    const tot = await ow.evaluate(() => { const T = window.__T.get(), o = [...document.querySelectorAll('#f-service option')]; const ids = [document.querySelector('#f-service').value, document.querySelector('#modalroot select[aria-label="Another service"]').value]; const L = ids.map(i => T.IDX.service[i]); return { dur: +document.querySelector('#f-dur').value, want: L.reduce((t, x) => t + (x.dur || 180), 0), price: +document.querySelector('#f-price').value, wantP: L.reduce((t, x) => t + (x.promo || x.price || 0), 0) }; });
+    ok('Length and price add up across services', tot.dur === tot.want && tot.price === tot.wantP, tot);
+  } else ok('Service list has at least two services to combine', false, svcN);
+  const sl = await ow.evaluate(() => { const T = window.__T.get(), l = T.D.services.filter(x => /^Test /.test(x.name)); const a = { serviceId: l[0].id, extra: [{ serviceId: l[1].id }] }; return { n: T.apptSvcs(a).length, same: T.svcLines(a, 7500).map(x => x.unit), disc: T.svcLines(a, 7000).map(x => x.unit) }; });
+  ok('Multi-service sale lines: one line per service, total follows the price', sl.n === 2 && sl.same.join() === '5000,2500' && sl.disc.reduce((t, x) => t + x, 0) === 7000, sl);
+  await ow.evaluate(() => window.__T.get().closeModal());
   const nx = await login('none');
   ok('A login without access sees only a waiting screen, no menu and no data', /Waiting for access/.test(await nx.textContent('body')) && !(await nx.$('.nav')) && !/Wanjiru/.test(await nx.evaluate(() => document.body.innerText)));
   ok('The waiting screen offers Check again and Sign out', !!(await nx.$('button:has-text("Check again")')) && !!(await nx.$('button:has-text("Sign out")')));
