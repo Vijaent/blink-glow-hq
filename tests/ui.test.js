@@ -1,7 +1,7 @@
 // Browser test of the finished index.html with a fake Supabase (no network). Needs: npm i playwright; CHROMIUM_PATH optional.
 const { chromium } = require('playwright');
 const fs = require('fs');
-const INDEX = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8').replace("(function(){\n'use strict';", "(function(){\n'use strict';window.__T={get:()=>({expenseForm,receiveForm,voidSale,apptSvcs,svcLines,IDX,payForm,deleteClient,bookingForm,saleForm,put,nextRcptNo,nextSaleNo,rcptData,rcptHtml,receiptModal,closeModal,todayStr,D})};");
+const INDEX = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8').replace("(function(){\n'use strict';", "(function(){\n'use strict';window.__T={get:()=>({checkWindow,expenseForm,receiveForm,voidSale,apptSvcs,svcLines,IDX,payForm,deleteClient,bookingForm,saleForm,put,nextRcptNo,nextSaleNo,rcptData,rcptHtml,receiptModal,closeModal,todayStr,D})};");
 const FAKE = fs.readFileSync(__dirname + '/fake_supabase.js', 'utf8');
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { c ? pass++ : fail++; console.log((c ? 'PASS ' : 'FAIL ') + n + (c || x === undefined ? '' : ' | ' + JSON.stringify(x))); };
@@ -231,6 +231,12 @@ const CFG = { biz: 'Blink & Glow', tz: 'Africa/Nairobi', phone: '0712345678', ho
     ok('Owner: ' + f + ' has no account field', !/Paid from|account/i.test(await ow.textContent('#modalroot')), f);
     await ow.evaluate(() => window.__T.get().closeModal());
   }
+  const cw = await ow.evaluate(() => { const T = window.__T.get(); const d = (() => { let x = new Date('2026-11-04T12:00:00'); return '2026-11-04'; })(); return { last: T.checkWindow(d, 18 * 60, 180, false), after: T.checkWindow(d, 21 * 60, 180, false), priv: T.checkWindow(d, 21 * 60, 180, true), early: T.checkWindow(d, 7 * 60, 60, false) }; });
+  ok('Staff booking: starting at the last start time is allowed, ending after it', cw.last === '', cw);
+  ok('Staff booking: after the last start is refused, a private booking is allowed', /Outside booking hours/.test(cw.after) && cw.priv === '' && /Outside booking hours/.test(cw.early), cw);
+  await ow.evaluate(() => window.__T.get().bookingForm()); await ow.waitForTimeout(250);
+  ok('Booking form has the Private booking option and fee', /Private booking/.test(await ow.textContent('#modalroot')) && !!(await ow.$('#f-privFee')));
+  await ow.evaluate(() => window.__T.get().closeModal());
   const nx = await login('none');
   ok('A login without access sees only a waiting screen, no menu and no data', /Waiting for access/.test(await nx.textContent('body')) && !(await nx.$('.nav')) && !/Wanjiru/.test(await nx.evaluate(() => document.body.innerText)));
   ok('The waiting screen offers Check again and Sign out', !!(await nx.$('button:has-text("Check again")')) && !!(await nx.$('button:has-text("Sign out")')));

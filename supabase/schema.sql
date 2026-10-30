@@ -233,7 +233,8 @@ begin
   day := cfg->'hours'->(extract(dow from d)::int)::text;
   if day is null or jsonb_typeof(day) <> 'object' then return jsonb_build_object('ok', false, 'error', 'closed'); end if;
   o := public.bg_tmin(day->>'o'); c := public.bg_tmin(day->>'c');
-  if p_start is null or p_start < o or p_start + dur > c then return jsonb_build_object('ok', false, 'error', 'outside_hours'); end if;
+  -- c is the LAST START time: a service may begin at or before it and finish after it.
+  if p_start is null or p_start < o or p_start > c then return jsonb_build_object('ok', false, 'error', 'outside_hours'); end if;
 
   for b in select * from jsonb_array_elements(coalesce(cfg->'blocks', '[]'::jsonb)) loop
     if d between (b->>'from')::date and coalesce(nullif(b->>'to', '')::date, (b->>'from')::date) then

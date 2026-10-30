@@ -99,7 +99,8 @@ const nextDow = (dow, min = 3) => { for (let i = min; i < 40; i++) { const s = n
   // ── studio rules, enforced on the server ──
   x = await book('s1', sun, 600); ok('Closed day is refused', x.error === 'closed', x);
   x = await book('s1', wed, 480); ok('Before opening is refused', x.error === 'outside_hours', x);
-  x = await book('s1', wed, 17 * 60); ok('Running past closing is refused', x.error === 'outside_hours', x);
+  x = await book('s1', wed, 18 * 60 + 30); ok('Starting after the last start time is refused', x.error === 'outside_hours', x);
+  x = await book('s2', sat, 19 * 60 + 30); ok('Saturday: 19:30 is after the 19:00 last start, refused', x.error === 'outside_hours', x);
   x = await book('s2', sat, 17 * 60 + 30); ok('Saturday runs later (19:00 close): 17:30 + 90 min fits', x.ok === true, x);
   await setCfg({ ...cfg, breaks: [{ from: '13:00', to: '14:00' }] });
   x = await book('s2', thu, 12 * 60 + 30); ok('A booking that runs into the lunch break is refused', x.error === 'break', x);

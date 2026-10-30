@@ -2754,7 +2754,7 @@ function openSlots(cfg,slots,date,dur,staffPick,nowFn){
  const day=cfg.hours[dow(date)];if(!day||dayBlocked(cfg,date))return [];
  const o=tmin(day.o),c=tmin(day.c),res=[],buf=cfg.buffer||0,step=cfg.step||30;
  const staff=staffPick?[staffPick]:cfg.staff;
- for(let t=o;t+dur<=c;t+=step){
+ for(let t=o;t<=c;t+=step){
   if((cfg.breaks||[]).some(b=>overlap(t,t+dur,tmin(b.from),tmin(b.to))))continue;
   if((nowFn||minsFromNow)(date,t)<(cfg.notice||0)*60)continue;
   const free=staff.filter(st=>!slotClash(slots,date,t,t+dur+buf,st));
@@ -2995,15 +2995,16 @@ function deleteClient(c){const t=todayStr(),up=D.appts.filter(a=>a.contactId===c
 function nextSaleNo(){const n=Math.max(0,...D.sales.map(s=>+(String(s.no||'').replace(/\D/g,''))||0));return 'S-'+String(n+1).padStart(4,'0')}
 const acctOpts=()=>D.accounts.filter(a=>!a.archived).map(a=>[a.id,a.name]);
 const defAcct=m=>{const a=D.accounts.find(x=>!x.archived&&(m==='M-Pesa'?/pesa/i.test(x.name):m==='Cash'?/cash/i.test(x.name):m==='Bank transfer'||m==='Card'?/bank/i.test(x.name):false));return a?a.id:(D.accounts[0]||{}).id||''};
-function checkWindow(date,start,dur){const day=S.hours[dow(date)];if(!day)return 'The studio is closed that day.';if(dayBlocked(S,date))return 'That date is blocked in Settings.';
- if(start<tmin(day.o)||start+dur>tmin(day.c))return 'Outside working hours ('+day.o+' to '+day.c+').';
+function checkWindow(date,start,dur,priv){if(priv)return '';const day=S.hours[dow(date)];if(!day)return 'The studio is closed that day.';if(dayBlocked(S,date))return 'That date is blocked in Settings.';
+ if(start<tmin(day.o)||start>tmin(day.c))return 'Outside booking hours: first start '+day.o+', last start '+day.c+'. Tick "Private booking" for a time outside these hours.';
  if(S.breaks.some(b=>overlap(start,start+dur,tmin(b.from),tmin(b.to))))return 'That time overlaps a break.';return ''}
 function apptSvcs(a){const out=[],p=IDX.service[a.serviceId];out.push({id:a.serviceId,name:p?p.name:'Service',price:p?(p.promo||p.price||0):0,sv:p});(a.extra||[]).forEach(e=>{const x=IDX.service[e.serviceId];out.push({id:e.serviceId,name:x?x.name:(e.name||'Service'),price:e.price!=null?e.price:(x?(x.promo||x.price||0):0),sv:x})});return out}
 function apptSvcName(a){return apptSvcs(a).map(x=>x.name).join(' + ')}
-function svcLines(a,total){const L=apptSvcs(a).map(x=>({kind:'service',refId:x.id,name:x.name,qty:1,unit:rd(x.price)}));if(L.length===1){L[0].unit=rd(total);return L}
- const diff=rd(total)-sum(L,l=>l.unit);if(diff)L[0].unit=Math.max(0,L[0].unit+diff);return L}
+function svcLines(a,total){const fee=rd(a.privFee||0),L=apptSvcs(a).map(x=>({kind:'service',refId:x.id,name:x.name,qty:1,unit:rd(x.price)})),tot=rd(total)-fee;
+ if(L.length===1)L[0].unit=Math.max(0,tot);else{const diff=tot-sum(L,l=>l.unit);if(diff)L[0].unit=Math.max(0,L[0].unit+diff)}
+ if(fee>0)L.push({kind:'fee',name:'Private booking fee (outside normal hours)',qty:1,unit:fee});return L}
 function bookingForm(pre){pre=pre||{};let A=null;const extraBox=h('div',{style:'display:flex;flex-direction:column;gap:6px'}),extraSels=[];
- const recalc=()=>{if(!A)return;const ids=[A.get('service')].concat(extraSels.map(x=>x.value)).filter(Boolean),L=ids.map(i=>IDX.service[i]).filter(Boolean);if(!L.length)return;A.set('dur',sum(L,x=>x.dur||S.defDur));A.set('price',sum(L,x=>x.promo||x.price||0));refresh()};
+ const recalc=()=>{if(!A)return;const ids=[A.get('service')].concat(extraSels.map(x=>x.value)).filter(Boolean),L=ids.map(i=>IDX.service[i]).filter(Boolean);if(!L.length)return;A.set('dur',sum(L,x=>x.dur||S.defDur));A.set('price',sum(L,x=>x.promo||x.price||0)+(A.get('priv')?rd(A.get('privFee')):0));refresh()};
  const addRow=()=>{const sel=h('select',{'aria-label':'Another service',onchange:recalc},svcOpts().map(o=>{const a=Array.isArray(o)?o:[o,o];return h('option',{value:a[0],text:a[1]===''?'Choose a service':a[1]})}));extraSels.push(sel);
   const row=h('div',{class:'row',style:'align-items:center;gap:8px'},[sel,h('button',{type:'button',class:'btn ghost sm',text:'Remove',onclick:()=>{extraSels.splice(extraSels.indexOf(sel),1);row.remove();recalc()}})]);extraBox.appendChild(row)};
  const extraEl=h('div',{style:'display:flex;flex-direction:column;gap:6px'},[extraBox,h('button',{type:'button',class:'btn ghost sm',style:'align-self:flex-start',text:'+ Add another service',onclick:addRow}),h('small',{text:'Length and price add up automatically. You can still change them below.'})]);
@@ -3013,23 +3014,24 @@ function bookingForm(pre){pre=pre||{};let A=null;const extraBox=h('div',{style:'
   sl.forEach(s=>freeEl.appendChild(h('button',{type:'button',class:'slot',text:mstr(s.t),onclick:()=>{A.set('time',mstr(s.t))}})))};
  A=openForm({title:'New booking',cta:'Save booking',done:'Booking saved',wide:true,note:'A booking is firm when it has a day, time, stylist and deposit. Overlaps for the same stylist are blocked.',fields:[
   {k:'who',l:'Client',t:'contact',req:true,full:true,v:pre.who||'',hint:'Pick an existing client or type a new name'},{k:'phone',l:'Phone (new client)',t:'tel',v:pre.phone},
-  {k:'service',l:'Service',t:'sel',o:svcOpts(),v:pre.service||''},{k:'more',l:'More services (optional)',full:true,custom:()=>({el:extraEl,get:()=>''})},{k:'staff',l:'Stylist',t:'sel',o:staffOpts().concat([['Any','Any free stylist']]),v:S.staff[0]},{k:'date',l:'Day',t:'date',v:pre.date||todayStr()},{k:'time',l:'Start time',t:'time',v:pre.time||'09:00'},
+  {k:'service',l:'Service',t:'sel',o:svcOpts(),v:pre.service||''},{k:'more',l:'More services (optional)',full:true,custom:()=>({el:extraEl,get:()=>''})},{k:'priv',l:'Private booking (outside normal hours, charged separately)',t:'chk',full:true},{k:'privFee',l:'Private booking fee (KSh)',t:'num',hint:'Added to the price. Normal hours are the Settings hours; tick this only for a time outside them.'},{k:'staff',l:'Stylist',t:'sel',o:staffOpts().concat([['Any','Any free stylist']]),v:S.staff[0]},{k:'date',l:'Day',t:'date',v:pre.date||todayStr()},{k:'time',l:'Start time',t:'time',v:pre.time||'09:00'},
   {k:'dur',l:'Length (minutes)',t:'num',v:S.defDur},{k:'price',l:'Quoted price (KSh)',t:'num'},{k:'deposit',l:'Deposit received (KSh)',t:'num'},{k:'method',l:'Deposit method',t:'sel',o:S.methods},
   {k:'source',l:'How she found us',t:'sel',o:srcOpts(),v:pre.source||''},{k:'status',l:'Status',t:'sel',o:['Pending confirmation','Confirmed'],v:'Confirmed'},
   {k:'free',l:'Free start times',full:true,custom:()=>({el:freeEl,get:()=>''})},{k:'notes',l:'Notes',t:'ta',full:true}],
   onChange:(k,api)=>{if(k==='who'){const c=findContact(api.get('who'));if(c){api.set('phone',c.phone||'');if(c.source&&!api.get('source'))api.set('source',c.source)}}
-   if(k==='service')recalc();
+   if(k==='service'||k==='priv'||k==='privFee')recalc();
    if(['service','date','staff','dur','init'].includes(k))refresh()},
   submit:async v=>{if(!v.who.trim())return 'Add the client.';const dur=rd(v.dur)||S.defDur,start=tmin(v.time);
-   const w=checkWindow(v.date,start,dur);if(w)return w;
+   const w=checkWindow(v.date,start,dur,v.priv);if(w)return w;
    let staff=v.staff;if(staff==='Any'){staff=S.staff.find(s=>!clashFor(v.date,start,dur,s));if(!staff)return 'No stylist is free at that time.'}
    const c=clashFor(v.date,start,dur,staff);if(c)return 'Clashes with another booking for '+staff+' ('+mstr(c.s)+' to '+mstr(c.e)+', buffer included). Pick another time or stylist.';
    const cid=await ensureContact(v.who,v.phone,v.source,'Booked');
    const ct=D.contacts.find(x=>x.id===cid);if(ct&&!ct.source&&v.source)await patch('contacts',cid,{source:v.source});await patch('contacts',cid,{stage:'Booked',lastContact:todayStr()});
    const a={id:uid(),contactId:cid,serviceId:v.service,staff:staff,date:v.date,start:start,dur:dur,price:v.price,deposit:v.deposit,status:v.status,source:v.source,notes:v.notes,createdBy:'dashboard'};
+   if(v.priv){if(!(v.privFee>0))return 'Enter the private booking fee.';a.privFee=rd(v.privFee)}
    const xs=extraSels.map(x=>IDX.service[x.value]).filter(Boolean);if(xs.length)a.extra=xs.map(x=>({serviceId:x.id,name:x.name,price:x.promo||x.price||0,dur:x.dur||S.defDur}));
    const sv=IDX.service[v.service];
-   if(v.deposit>0||v.price>0){const sid=uid();a.saleId=sid;await put('sales',{id:sid,no:nextSaleNo(),date:v.date,contactId:cid,lines:v.service?svcLines(a,v.price):[{kind:'service',refId:'',name:'Appointment',qty:1,unit:rd(v.price)}],discount:0,refund:0,adj:[],channel:'',pending:true,apptId:a.id,notes:''});
+   if(v.deposit>0||v.price>0){const sid=uid();a.saleId=sid;await put('sales',{id:sid,no:nextSaleNo(),date:v.date,contactId:cid,lines:v.service||a.privFee?svcLines(a,v.price):[{kind:'service',refId:'',name:'Appointment',qty:1,unit:rd(v.price)}],discount:0,refund:0,adj:[],channel:'',pending:true,apptId:a.id,notes:''});
     if(v.deposit>0)offerReceipt(await put('payments',{date:todayStr(),amount:rd(v.deposit),method:v.method,accountId:defAcct(v.method),saleId:sid,ref:'',notes:'Booking deposit',rno:nextRcptNo()}))}
    await put('appts',a);syncSlot(a);audit('Booking created',cName(cid)+' '+v.date+' '+v.time);
    if(v.deposit<=0)toast('Saved without a deposit. Chase it before the day.')}})}
@@ -3057,7 +3059,7 @@ function completeFlow(a){const recs=apptSvcs(a).flatMap(x=>((x.sv&&x.sv.recipe)|
    await patch('appts',a.id,{status:'Completed',saleId:sid,consumed:!!v.use});syncSlot(Object.assign({},a,{status:'Completed'}));
    await patch('contacts',a.contactId,{lastContact:a.date});audit('Appointment completed',cName(a.contactId)+' '+a.date)}})}
 function reschedFlow(a){openForm({title:'Reschedule',done:'Rescheduled',note:cName(a.contactId),fields:[{k:'date',l:'New day',t:'date',v:a.date},{k:'time',l:'New start time',t:'time',v:mstr(a.start)},{k:'staff',l:'Stylist',t:'sel',o:staffOpts(),v:a.staff}],
- submit:async v=>{const st=tmin(v.time),w=checkWindow(v.date,st,a.dur);if(w)return w;const c=clashFor(v.date,st,a.dur,v.staff,a.id);if(c)return 'That time clashes with another booking for '+v.staff+'.';
+ submit:async v=>{const st=tmin(v.time),w=checkWindow(v.date,st,a.dur,a.privFee>0);if(w)return w;const c=clashFor(v.date,st,a.dur,v.staff,a.id);if(c)return 'That time clashes with another booking for '+v.staff+'.';
   const na=Object.assign({},a,{date:v.date,start:st,staff:v.staff,status:'Rescheduled',resched:(a.resched||0)+1});await patch('appts',a.id,{date:v.date,start:st,staff:v.staff,status:'Rescheduled',resched:na.resched});syncSlot(na);
   if(a.saleId)await patch('sales',a.saleId,{date:v.date});audit('Rescheduled',cName(a.contactId))}})}
 function acceptRequest(r){const sv=D.services.find(s=>s.id===r.serviceId)||null;
@@ -3558,8 +3560,8 @@ function viewSettings(){const w=h('div',{class:'wrap'}),F={};
  const cardF=(t,h2,kids)=>card(t,h2,h('div',{class:'fgrid'},kids));
  w.appendChild(cardF('Business','',[inp('biz','Business name',S.biz),inp('studioAddr','Studio address (shown on receipts)',S.studioAddr),inp('studioPhone','Studio WhatsApp number',S.studioPhone,'tel','Used for booking confirmations. Format 0712 345 678 or +254…'),inp('target','Monthly revenue target (KSh)',S.target,'number'),inp('bookingBase',SA?'Booking page address (fixed by the system)':'Booking link base',SA?pubBase():(S.bookingBase||''),'text',SA?'Booking links and QR codes always use this address, so they cannot be mistyped.':'Paste this page’s share link from the Share menu. Booking links are built from it.'),inp('fyStart','Financial year starts (MM-DD)',S.fyStart),inp('shortLinks','Short links (one per line: General = https://…  or  Instagram = https://…)',S.shortLinks||'','ta','Optional. Paste shortened links made in a link shortener. They replace the long links everywhere.'),h('label',{},['Time zone',(F.tz=h('select',{id:'st-tz'},[['Africa/Nairobi','Africa/Nairobi (EAT)'],['Africa/Kampala','Africa/Kampala'],['Africa/Dar_es_Salaam','Africa/Dar es Salaam'],['UTC','UTC']].map(o=>h('option',{value:o[0],text:o[1]}))))]),h('small',{text:'Currency is Kenyan shillings (KSh).'})]));
  F.tz.value=S.tz;if(SA&&F.bookingBase)F.bookingBase.disabled=true;
- const hr=[1,2,3,4,5,6,0].map(d=>{const x=S.hours[d]||{o:'',c:''};const o=h('input',{type:'time',id:'st-ho'+d,value:x.o,oninput:()=>w.setAttribute('data-dirty','1')}),c=h('input',{type:'time',id:'st-hc'+d,value:x.c,oninput:()=>w.setAttribute('data-dirty','1')});F['ho'+d]=o;F['hc'+d]=c;return h('label',{},[DAYN[d]+' open and close (empty = closed)',h('div',{class:'row',style:'flex-wrap:nowrap'},[o,c])])});
- w.appendChild(cardF('Working hours','Booking availability follows these hours. Sunday closed is an assumption to confirm.',hr));
+ const hr=[1,2,3,4,5,6,0].map(d=>{const x=S.hours[d]||{o:'',c:''};const o=h('input',{type:'time',id:'st-ho'+d,value:x.o,oninput:()=>w.setAttribute('data-dirty','1')}),c=h('input',{type:'time',id:'st-hc'+d,value:x.c,oninput:()=>w.setAttribute('data-dirty','1')});F['ho'+d]=o;F['hc'+d]=c;return h('label',{},[DAYN[d]+' first booking and last booking start (empty = closed)',h('div',{class:'row',style:'flex-wrap:nowrap'},[o,c])])});
+ w.appendChild(cardF('Working hours','The last start time is the latest a booking may begin; it can finish after it. Sunday closed is an assumption to confirm.',hr));
  w.appendChild(cardF('Booking rules','The default appointment length is 180 minutes. Each service can set its own.',[inp('defDur','Default appointment length (minutes)',S.defDur,'number'),inp('buffer','Buffer after each appointment (minutes)',S.buffer,'number'),inp('step','Start-time steps (minutes)',S.step,'number'),inp('notice','Minimum booking notice (hours)',S.notice,'number'),inp('cancelHrs','Free cancellation up to (hours before)',S.cancelHrs,'number'),inp('reschedHrs','Rescheduling allowed up to (hours before)',S.reschedHrs,'number'),inp('cancelRule','Cancellation rule shown to clients',S.cancelRule,'ta'),
   inp('breaks','Daily breaks (one per line: 13:00-14:00)',S.breaks.map(b=>b.from+'-'+b.to).join('\n'),'ta'),inp('blocks','Unavailable dates (one per line: 2026-12-25 to 2026-12-26 Christmas)',S.blocks.map(b=>b.from+' to '+(b.to||b.from)+' '+(b.note||'')).join('\n'),'ta'),inp('staff','Stylists (one per line)',S.staff.join('\n'),'ta')]));
  w.appendChild(cardF('Lists','One item per line. Removing an item never changes old records.',[inp('sources','Acquisition sources',S.sources.join('\n'),'ta'),inp('channels','Sales channels',S.channels.join('\n'),'ta'),inp('methods','Payment methods',S.methods.join('\n'),'ta'),inp('expCats','Expense categories',S.expCats.join('\n'),'ta')]));
@@ -3610,7 +3612,7 @@ async function removeDemo(){for(const c of Object.keys(D)){for(const r of D[c].s
 /* ================= self tests ================= */
 function selfTests(){const T=[],ok=(n,c,d)=>T.push([n,!!c,d||'']);
  const cfg={hours:{1:{o:'09:00',c:'18:00'},0:null},breaks:[{from:'13:00',to:'14:00'}],blocks:[],buffer:15,step:30,notice:0,staff:['A','B']};const mon='2026-11-02',sun='2026-11-01',never=()=>9999;
- let sl=openSlots(cfg,[],mon,180,'',never);ok('Default 180-minute service: last start is 15:00',sl.length&&sl[sl.length-1].t===15*60,sl.map(x=>mstr(x.t)).join(' '));
+ let sl=openSlots(cfg,[],mon,180,'',never);ok('Last booking may start at closing time (service finishes after)',sl.length>0&&sl[sl.length-1].t===18*60,sl.map(x=>mstr(x.t)).join(' '));
  ok('Break time is never offered',!sl.some(x=>overlap(x.t,x.t+180,13*60,14*60)),sl.map(x=>mstr(x.t)).join(', '));
  ok('Closed day offers nothing',openSlots(cfg,[],sun,60,'',never).length===0);
  const busy=[{id:'1',date:mon,s:540,e:540+180+15,staff:'A'}];
